@@ -36,7 +36,19 @@ data_transform = transforms.Compose([
 ])
 
 # 3. Setup Webcam and Face Detection
-cap = cv2.VideoCapture(0)
+# Try different camera indices (0, 1, 2) to find the correct one
+cap = None
+for camera_index in [0, 1, 2]:
+    cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)  # CAP_DSHOW for Windows
+    if cap.isOpened():
+        print(f"Camera found at index {camera_index}")
+        break
+    cap.release()
+
+if not cap or not cap.isOpened():
+    print("Error: Could not open any camera. Please check your webcam connection.")
+    exit(1)
+
 # Load standard Haar Cascade for face detection (included in cv2)
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
