@@ -1,0 +1,24 @@
+# Data files (too large for GitHub)
+data/fer2013.csv
+data/*.csv
+
+# Model files
+*.pth
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.conda/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
