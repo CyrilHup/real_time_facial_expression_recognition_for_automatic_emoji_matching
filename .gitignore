@@ -9,6 +9,7 @@ data/*.csv
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
 
 # Virtual environments
 .conda/
@@ -22,3 +23,30 @@ env/
 # OS files
 .DS_Store
 Thumbs.db
+
+# LaTeX build files
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.synctex(busy)
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
+*.bcf
+*.run.xml
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.synctex.gz
+
+# Temporary folders
+temp_ferplus/
