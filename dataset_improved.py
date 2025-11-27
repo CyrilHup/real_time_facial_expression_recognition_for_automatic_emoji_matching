@@ -400,7 +400,7 @@ if __name__ == "__main__":
     
     # Test FER2013
     try:
-        fer = FER2013Dataset('./data/fer2013.csv')
+        fer = FER2013Dataset('./data/fer2013/fer2013.csv')
         print(f"FER2013: {len(fer)} samples")
         weights = get_class_weights(fer)
     except Exception as e:
@@ -408,7 +408,7 @@ if __name__ == "__main__":
     
     # Test FER+
     try:
-        ferplus = FERPlusDataset('./data/fer2013.csv', './data/')
+        ferplus = FERPlusDataset('./data/fer2013/fer2013.csv', './data/fer2013/')
         print(f"FER+: {len(ferplus)} samples")
     except Exception as e:
         print(f"FER+ not available: {e}")

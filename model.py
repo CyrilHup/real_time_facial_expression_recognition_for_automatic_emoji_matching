@@ -5,16 +5,31 @@ import torch.nn.functional as F
 class FaceEmotionCNN(nn.Module):
     """
     Architecture CNN améliorée pour la reconnaissance d'émotions.
+    
+    Supporte:
+    - Images RGB 75x75 (Balanced AffectNet) avec in_channels=3
+    - Images Grayscale 48x48 (FER2013/FER+) avec in_channels=1
+    
+    Features:
     - Plus de couches convolutionnelles pour extraire des features plus riches
     - Residual connections pour un meilleur gradient flow
     - Dropout progressif pour éviter l'overfitting
-    - Attention mechanism pour focus sur les régions importantes du visage
+    - Global Average Pooling pour flexibilité de taille d'entrée
     """
-    def __init__(self, num_classes=7):
+    def __init__(self, num_classes=8, in_channels=3, input_size=75):
+        """
+        Args:
+            num_classes: Nombre de classes d'émotions (8 pour AffectNet, 7 pour FER2013)
+            in_channels: Nombre de canaux d'entrée (3 pour RGB, 1 pour grayscale)
+            input_size: Taille de l'image d'entrée (75 pour AffectNet, 48 pour FER2013)
+        """
         super(FaceEmotionCNN, self).__init__()
         
-        # Convolutional Block 1 (48x48 -> 24x24)
-        self.conv1a = nn.Conv2d(1, 64, kernel_size=3, padding=1)
+        self.in_channels = in_channels
+        self.input_size = input_size
+        
+        # Convolutional Block 1 (75x75 -> 37x37 ou 48x48 -> 24x24)
+        self.conv1a = nn.Conv2d(in_channels, 64, kernel_size=3, padding=1)
         self.bn1a = nn.BatchNorm2d(64)
         self.conv1b = nn.Conv2d(64, 64, kernel_size=3, padding=1)
         self.bn1b = nn.BatchNorm2d(64)
@@ -117,7 +132,7 @@ class FaceEmotionCNN(nn.Module):
 
 # Modèle léger compatible avec l'ancien (pour charger les anciens poids)
 class FaceEmotionCNNLegacy(nn.Module):
-    """Version legacy pour compatibilité avec les anciens poids"""
+    """Version legacy pour compatibilité avec les anciens poids (FER2013 48x48 grayscale)"""
     def __init__(self):
         super(FaceEmotionCNNLegacy, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
@@ -140,3 +155,23 @@ class FaceEmotionCNNLegacy(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+
+
+# Factory function pour créer le bon modèle selon le dataset
+def create_model(dataset='affectnet', num_classes=8):
+    """
+    Crée le modèle approprié selon le dataset.
+    
+    Args:
+        dataset: 'affectnet' (75x75 RGB) ou 'fer2013' (48x48 grayscale)
+        num_classes: Nombre de classes (8 pour AffectNet, 7 pour FER2013)
+    
+    Returns:
+        Instance de FaceEmotionCNN configurée
+    """
+    if dataset.lower() == 'affectnet':
+        return FaceEmotionCNN(num_classes=num_classes, in_channels=3, input_size=75)
+    elif dataset.lower() in ['fer2013', 'ferplus', 'fer+']:
+        return FaceEmotionCNN(num_classes=num_classes, in_channels=1, input_size=48)
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}. Use 'affectnet' or 'fer2013'.")

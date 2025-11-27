@@ -1,6 +1,5 @@
 # Data files (too large for GitHub)
-data/fer2013.csv
-data/*.csv
+data/
 
 # Model files
 *.pth
@@ -47,6 +46,7 @@ report/*.log
 report/*.out
 report/*.toc
 report/*.synctex.gz
+report/*.pdf
 
 # Temporary folders
 temp_ferplus/

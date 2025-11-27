@@ -9,7 +9,7 @@ A deep learning application that detects facial expressions in real-time using y
 ## Features
 
 - 🎥 Real-time face detection using Haar Cascades
-- 🧠 CNN-based emotion classification (7 emotions)
+- 🧠 CNN-based emotion classification (8 emotions)
 - 😃 Automatic emoji overlay on detected faces
 - 📋 Copy emoji to clipboard with 's' key
 
@@ -24,6 +24,16 @@ A deep learning application that detects facial expressions in real-time using y
 | Sad | 😢 |
 | Surprise | 😲 |
 | Neutral | 😐 |
+| Contempt | 😏 |
+
+## Dataset
+
+This project uses the **Balanced AffectNet** dataset:
+- Source: [Kaggle - Balanced AffectNet](https://www.kaggle.com/datasets/dollyprajapati182/balanced-affectnet)
+- 41,008 images total
+- 8 emotion classes (~5,126 images per class)
+- RGB images at 75×75 pixels
+- Pre-balanced for better training
 
 ## Installation
 
@@ -44,16 +54,28 @@ conda activate fer_project
 ### 3. Install dependencies
 
 ```bash
-pip install torch torchvision pandas opencv-python pillow pyperclip
+pip install torch torchvision pandas opencv-python pillow pyperclip albumentations
 ```
 
-### 4. Download the FER-2013 Dataset
+### 4. Download the Balanced AffectNet Dataset
 
-Download the dataset from [Kaggle FER-2013](https://www.kaggle.com/datasets/msambare/fer2013) and place `fer2013.csv` in the `data/` folder:
+Download the dataset from [Kaggle Balanced AffectNet](https://www.kaggle.com/datasets/dollyprajapati182/balanced-affectnet) and extract the folders directly into `data/`:
 
 ```
 data/
-└── fer2013.csv
+├── train/
+│   ├── Anger/
+│   ├── Contempt/
+│   ├── Disgust/
+│   ├── Fear/
+│   ├── Happy/
+│   ├── Neutral/
+│   ├── Sad/
+│   └── Surprise/
+├── val/
+│   └── ... (same structure)
+└── test/
+    └── ... (same structure)
 ```
 
 ## Usage
@@ -61,10 +83,10 @@ data/
 ### Train the model
 
 ```bash
-python train.py
+python train_affectnet.py
 ```
 
-This will train the CNN model and save it as `emotion_model.pth`.
+This will train the CNN model on the Balanced AffectNet dataset and save it as `emotion_model.pth`.
 
 ### Run the application
 
@@ -79,38 +101,55 @@ python app.py
 ## Model Architecture
 
 The CNN architecture consists of:
-- 3 Convolutional blocks with BatchNorm and MaxPooling
-- Dropout (0.5) for regularization
-- 2 Fully connected layers
-- Output: 7 emotion classes
+- 4 Convolutional blocks with BatchNorm, MaxPooling, and progressive Dropout
+- Global Average Pooling for flexibility
+- 3 Fully connected layers
+- Output: 8 emotion classes
 
 ```
-Input (1, 48, 48)
+Input (3, 75, 75) - RGB Image
     ↓
-Conv2D(32) → BatchNorm → ReLU → MaxPool
+Conv2D(64) × 2 → BatchNorm → ReLU → MaxPool → Dropout(0.1)
     ↓
-Conv2D(64) → BatchNorm → ReLU → MaxPool
+Conv2D(128) × 2 → BatchNorm → ReLU → MaxPool → Dropout(0.1)
     ↓
-Conv2D(128) → BatchNorm → ReLU → MaxPool
+Conv2D(256) × 2 → BatchNorm → ReLU → MaxPool → Dropout(0.15)
     ↓
-Flatten → Dropout(0.5)
+Conv2D(512) × 2 → BatchNorm → ReLU → MaxPool → Dropout(0.2)
     ↓
-FC(512) → ReLU
+Global Average Pooling
     ↓
-FC(7) → Output
+FC(512→256) → BatchNorm → ReLU → Dropout(0.4)
+    ↓
+FC(256→128) → BatchNorm → ReLU → Dropout(0.3)
+    ↓
+FC(128→8) → Output
 ```
 
 ## Project Structure
 
 ```
-├── app.py          # Real-time webcam application
-├── train.py        # Model training script
-├── model.py        # CNN architecture definition
-├── dataset.py      # FER-2013 dataset loader
-├── data/
-│   └── fer2013.csv # Dataset (not included, download from Kaggle)
-└── emotion_model.pth # Trained model (generated after training)
+├── app.py                  # Real-time webcam application
+├── train_affectnet.py      # Training script for AffectNet
+├── model.py                # CNN architecture definition
+├── dataset_affectnet.py    # Balanced AffectNet dataset loader
+├── data/                   # Dataset (not included, download from Kaggle)
+│   ├── train/
+│   ├── val/
+│   └── test/
+├── emotion_model.pth       # Trained model (generated after training)
+├── report/
+│   └── report.tex          # Technical report (LaTeX)
+└── README.md
 ```
+
+## Training Features
+
+- **Mixup Augmentation**: Blend samples for better generalization
+- **Label Smoothing**: Prevent overconfidence
+- **Advanced Augmentation**: Using Albumentations library
+- **OneCycleLR Scheduler**: Optimal learning rate scheduling
+- **Early Stopping**: Prevent overfitting
 
 ## Requirements
 
@@ -118,7 +157,7 @@ FC(7) → Output
 - PyTorch 2.0+
 - OpenCV 4.0+
 - Pillow
-- pandas
+- albumentations
 - pyperclip
 
 ## License
@@ -127,5 +166,6 @@ MIT License
 
 ## Acknowledgments
 
-- [FER-2013 Dataset](https://www.kaggle.com/datasets/msambare/fer2013)
+- [Balanced AffectNet Dataset](https://www.kaggle.com/datasets/dollyprajapati182/balanced-affectnet)
 - PyTorch team for the deep learning framework
+- Albumentations team for the augmentation library

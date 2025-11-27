@@ -59,7 +59,7 @@ def check_fer2013():
     print("Vérification de FER2013")
     print("="*60)
     
-    fer_file = './data/fer2013.csv'
+    fer_file = './data/fer2013/fer2013.csv'
     
     if os.path.exists(fer_file):
         import pandas as pd
@@ -89,8 +89,8 @@ def analyze_dataset_quality():
     print("Analyse de qualité du dataset")
     print("="*60)
     
-    fer_file = './data/fer2013.csv'
-    ferplus_file = './data/fer2013new.csv'
+    fer_file = './data/fer2013/fer2013.csv'
+    ferplus_file = './data/fer2013/fer2013new.csv'
     
     if not os.path.exists(fer_file):
         print("FER2013 non disponible pour l'analyse.")

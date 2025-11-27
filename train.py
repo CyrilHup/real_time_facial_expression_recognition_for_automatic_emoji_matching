@@ -54,8 +54,8 @@ val_transform = transforms.Compose([
 print("Loading dataset...")
 
 # Vérifier si FER+ est disponible
-ferplus_file = './data/fer2013new.csv'
-fer_file = './data/fer2013.csv'
+ferplus_file = './data/fer2013/fer2013new.csv'
+fer_file = './data/fer2013/fer2013.csv'
 
 # Fonction pour calculer les poids de classe (intégrée pour éviter les bugs)
 def compute_class_weights(labels, num_classes):

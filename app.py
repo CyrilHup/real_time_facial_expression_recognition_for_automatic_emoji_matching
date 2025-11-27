@@ -7,18 +7,20 @@ import pyperclip  # For clipboard support
 from collections import deque
 from model import FaceEmotionCNN
 
-# Configuration: 8 émotions avec FER+ (inclut Contempt)
-NUM_CLASSES = 8  # 7 émotions FER2013 + Contempt (FER+)
+# Configuration pour AffectNet
+NUM_CLASSES = 8  # 8 émotions AffectNet
+IN_CHANNELS = 3  # RGB
+INPUT_SIZE = 75  # 75x75 pixels
 
 # 1. Load the Model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-model = FaceEmotionCNN(num_classes=NUM_CLASSES).to(device)
+model = FaceEmotionCNN(num_classes=NUM_CLASSES, in_channels=IN_CHANNELS, input_size=INPUT_SIZE).to(device)
 
 # Charger les poids (supporte les deux formats)
 try:
-    checkpoint = torch.load('emotion_model.pth', map_location=device)
+    checkpoint = torch.load('emotion_model.pth', map_location=device, weights_only=False)
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
     else:
@@ -26,10 +28,7 @@ try:
     print("Model loaded successfully!")
 except Exception as e:
     print(f"Error loading model: {e}")
-    print("Trying legacy model...")
-    from model import FaceEmotionCNNLegacy
-    model = FaceEmotionCNNLegacy().to(device)
-    model.load_state_dict(torch.load('emotion_model.pth', map_location=device))
+    exit(1)
     
 model.eval()
 
@@ -63,12 +62,12 @@ emotion_colors = {
     7: (139, 69, 19)    # Marron - Contempt
 }
 
-# Image Preprocessing amélioré (avec normalisation)
+# Image Preprocessing pour AffectNet (RGB 75x75)
 data_transform = transforms.Compose([
     transforms.ToPILImage(),
-    transforms.Grayscale(num_output_channels=1),
-    transforms.Resize((48, 48)),
+    transforms.Resize((INPUT_SIZE, INPUT_SIZE)),
     transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
 # 3. Configuration du lissage temporel pour des prédictions plus stables
@@ -176,6 +175,8 @@ while True:
     
     frame_count += 1
 
+    # Convert to RGB for model and gray for face detection
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
     # Détection de visage avec paramètres optimisés
@@ -191,19 +192,16 @@ while True:
         # Crop face avec marge
         margin = int(0.1 * min(w, h))
         y1 = max(0, y - margin)
-        y2 = min(gray_frame.shape[0], y + h + margin)
+        y2 = min(frame.shape[0], y + h + margin)
         x1 = max(0, x - margin)
-        x2 = min(gray_frame.shape[1], x + w + margin)
+        x2 = min(frame.shape[1], x + w + margin)
         
-        roi_gray = gray_frame[y1:y2, x1:x2]
+        # Use RGB image for the model
+        roi_rgb = frame_rgb[y1:y2, x1:x2]
         
         try:
-            # Prétraitement amélioré
-            # Égalisation d'histogramme pour normaliser l'éclairage
-            roi_gray = cv2.equalizeHist(roi_gray)
-            
-            # Prepare image for AI
-            roi_tensor: torch.Tensor = data_transform(roi_gray)  # type: ignore
+            # Prepare image for AI (RGB 75x75)
+            roi_tensor: torch.Tensor = data_transform(roi_rgb)  # type: ignore
             roi_tensor = roi_tensor.unsqueeze(0).to(device)
 
             # Predict
