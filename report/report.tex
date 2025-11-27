@@ -1,3 +1,6 @@
+% chktex-file 8
+% chktex-file 18
+% chktex-file 26
 \documentclass[12pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -14,6 +17,7 @@
 \usepackage{subcaption}
 \usepackage{algorithm}
 \usepackage{algorithmic}
+\usepackage{tikz}
 
 \geometry{margin=2.5cm}
 
@@ -85,7 +89,7 @@ Le dataset FER2013 (Facial Expression Recognition 2013) est le dataset de réfé
 \begin{itemize}
     \item 35 887 images de visages en niveaux de gris
     \item Résolution : 48$\times$48 pixels
-    \item 7 classes d'émotions équilibrées (sauf "Disgust")
+    \item 7 classes d'émotions équilibrées (sauf \textit{Disgust})
 \end{itemize}
 
 \subsection{Modèle Initial (\texttt{model.py})}
@@ -500,7 +504,7 @@ Empêche les gradients explosifs qui peuvent déstabiliser l'entraînement.
 
 \subsection{Lissage Temporel des Prédictions}
 
-Le problème principal des prédictions frame-par-frame est l'instabilité : l'émotion affichée peut changer rapidement entre frames successives, créant un effet de "flickering" désagréable.
+Le problème principal des prédictions frame-par-frame est l'instabilité : l'émotion affichée peut changer rapidement entre frames successives, créant un effet de \emph{flickering} désagréable.
 
 \begin{lstlisting}[caption={Lissage temporel avec moyenne pondérée}]
 from collections import deque
@@ -538,11 +542,9 @@ L'égalisation d'histogramme normalise la distribution des niveaux de gris, rend
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}
-\node[draw, minimum width=3cm, minimum height=2cm] at (0,0) {Image sombre};
-\node at (2.5,0) {$\rightarrow$};
-\node[draw, minimum width=3cm, minimum height=2cm] at (5,0) {Histogramme équalisé};
-\end{tikzpicture}
+\fbox{\parbox{0.8\textwidth}{\centering
+\textbf{Image sombre} $\longrightarrow$ \textbf{Histogramme égalisé}
+}}
 \caption{L'égalisation redistribue les intensités sur toute la plage [0, 255]}
 \end{figure}
 
@@ -619,7 +621,7 @@ Le dataset FER2013 présente plusieurs limitations connues :
     Neutral & 6,198 & 17.3\% \\
     \bottomrule
     \end{tabular}
-    \caption{Distribution des classes dans FER2013. "Disgust" est très sous-représentée.}
+    \caption{Distribution des classes dans FER2013. \textit{Disgust} est très sous-représentée.}
     \end{table}
     
     \item \textbf{Images en niveaux de gris uniquement}
@@ -633,8 +635,8 @@ Microsoft Research a publié FER+ qui améliore FER2013 avec :
 \begin{itemize}
     \item 10 annotateurs par image (au lieu de 1)
     \item Vote majoritaire pour le label final
-    \item Possibilité d'utiliser des "soft labels" (distribution de probabilités)
-    \item Ajout de la classe "Contempt" (mépris)
+    \item Possibilité d'utiliser des \textit{soft labels} (distribution de probabilités)
+    \item Ajout de la classe \textit{Contempt} (mépris)
     \item Filtrage des images ambiguës
 \end{itemize}
 
@@ -663,7 +665,7 @@ class FERPlusDataset(Dataset):
 
 \subsection{Équilibrage des Classes}
 
-Pour compenser le déséquilibre (notamment le manque de "Disgust"), deux techniques sont implémentées :
+Pour compenser le déséquilibre (notamment le manque de \textit{Disgust}), deux techniques sont implémentées :
 
 \subsubsection{Poids de classe dans la loss}
 
@@ -772,7 +774,7 @@ Architecture améliorée + FER2013 & 65-70\% & +5\% \\
 \subsection{Amélioration de l'Expérience Utilisateur}
 
 \begin{itemize}
-    \item \textbf{Stabilité} : Le lissage temporel élimine le "flickering"
+    \item \textbf{Stabilité} : Le lissage temporel élimine le \emph{flickering}
     \item \textbf{Robustesse} : L'égalisation d'histogramme gère les variations d'éclairage
     \item \textbf{Lisibilité} : Les couleurs et barres de progression améliorent la compréhension
     \item \textbf{Réactivité} : Les paramètres de détection optimisés améliorent la fluidité
@@ -814,17 +816,17 @@ Pour aller plus loin, les améliorations suivantes pourraient être envisagées 
 
 \begin{verbatim}
 Final_project/
-├── app.py                 # Application temps réel
-├── model.py               # Architecture CNN
-├── train.py               # Script d'entraînement
-├── dataset.py             # Dataset FER2013 original
-├── dataset_improved.py    # Datasets améliorés (FER+, AffectNet, RAF-DB)
-├── download_datasets.py   # Script de téléchargement des datasets
-├── emotion_model.pth      # Poids du modèle entraîné
-├── data/
-│   ├── fer2013.csv        # Dataset FER2013
-│   └── fer2013new.csv     # Labels FER+ (optionnel)
-└── README.md
+|-- app.py                 # Application temps reel
+|-- model.py               # Architecture CNN
+|-- train.py               # Script d'entrainement
+|-- dataset.py             # Dataset FER2013 original
+|-- dataset_improved.py    # Datasets ameliores (FER+, AffectNet, RAF-DB)
+|-- download_datasets.py   # Script de telechargement des datasets
+|-- emotion_model.pth      # Poids du modele entraine
+|-- data/
+|   |-- fer2013.csv        # Dataset FER2013
+|   +-- fer2013new.csv     # Labels FER+ (optionnel)
++-- README.md
 \end{verbatim}
 
 %==============================================================================

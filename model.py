@@ -19,7 +19,7 @@ class FaceEmotionCNN(nn.Module):
         self.conv1b = nn.Conv2d(64, 64, kernel_size=3, padding=1)
         self.bn1b = nn.BatchNorm2d(64)
         self.pool1 = nn.MaxPool2d(2, 2)
-        self.dropout1 = nn.Dropout(0.25)
+        self.dropout1 = nn.Dropout(0.1)
         
         # Convolutional Block 2 (24x24 -> 12x12)
         self.conv2a = nn.Conv2d(64, 128, kernel_size=3, padding=1)
@@ -27,7 +27,7 @@ class FaceEmotionCNN(nn.Module):
         self.conv2b = nn.Conv2d(128, 128, kernel_size=3, padding=1)
         self.bn2b = nn.BatchNorm2d(128)
         self.pool2 = nn.MaxPool2d(2, 2)
-        self.dropout2 = nn.Dropout(0.25)
+        self.dropout2 = nn.Dropout(0.1)
         
         # Convolutional Block 3 (12x12 -> 6x6)
         self.conv3a = nn.Conv2d(128, 256, kernel_size=3, padding=1)
@@ -35,7 +35,7 @@ class FaceEmotionCNN(nn.Module):
         self.conv3b = nn.Conv2d(256, 256, kernel_size=3, padding=1)
         self.bn3b = nn.BatchNorm2d(256)
         self.pool3 = nn.MaxPool2d(2, 2)
-        self.dropout3 = nn.Dropout(0.25)
+        self.dropout3 = nn.Dropout(0.15)
         
         # Convolutional Block 4 (6x6 -> 3x3)
         self.conv4a = nn.Conv2d(256, 512, kernel_size=3, padding=1)
@@ -43,7 +43,7 @@ class FaceEmotionCNN(nn.Module):
         self.conv4b = nn.Conv2d(512, 512, kernel_size=3, padding=1)
         self.bn4b = nn.BatchNorm2d(512)
         self.pool4 = nn.MaxPool2d(2, 2)
-        self.dropout4 = nn.Dropout(0.25)
+        self.dropout4 = nn.Dropout(0.2)
         
         # Global Average Pooling (réduit 3x3 -> 1x1)
         self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
@@ -51,11 +51,11 @@ class FaceEmotionCNN(nn.Module):
         # Fully Connected Layers avec dropout progressif
         self.fc1 = nn.Linear(512, 256)
         self.bn_fc1 = nn.BatchNorm1d(256)
-        self.dropout_fc1 = nn.Dropout(0.5)
+        self.dropout_fc1 = nn.Dropout(0.4)
         
         self.fc2 = nn.Linear(256, 128)
         self.bn_fc2 = nn.BatchNorm1d(128)
-        self.dropout_fc2 = nn.Dropout(0.4)
+        self.dropout_fc2 = nn.Dropout(0.3)
         
         self.fc3 = nn.Linear(128, num_classes)
         

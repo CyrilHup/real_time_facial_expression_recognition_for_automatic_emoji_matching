@@ -2,13 +2,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torchvision import transforms
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, WeightedRandomSampler
+import numpy as np
 import os
 import time
 
 # Importer les datasets (amélioré si disponible, sinon original)
 try:
-    from dataset_improved import FERPlusDataset, FER2013Dataset, get_class_weights, get_balanced_sampler
+    from dataset_improved import FERPlusDataset, FER2013Dataset
     IMPROVED_DATASET = True
     print("✓ Using improved dataset module")
 except ImportError:
@@ -22,25 +23,26 @@ print("Imports successful!")
 
 # Hyperparameters optimisés
 BATCH_SIZE = 64
-LEARNING_RATE = 0.001
-EPOCHS = 50  # Plus d'epochs avec early stopping
-PATIENCE = 7  # Pour early stopping
+LEARNING_RATE = 0.0005  # Réduit de 0.001 à 0.0005 pour meilleure convergence
+EPOCHS = 60  # Plus d'epochs avec early stopping
+PATIENCE = 10  # Plus de patience pour laisser le modèle converger
 VALIDATION_SPLIT = 0.15  # 15% pour validation
-NUM_CLASSES = 8  # 7 émotions FER2013 + Contempt (FER+)
+USE_FERPLUS = True  # Mettre False pour utiliser FER2013 standard avec 7 classes
+NUM_CLASSES = 8 if USE_FERPLUS else 7  # 7 émotions FER2013 + Contempt si FER+
 
-# Data Augmentation pour un meilleur entraînement
-print("Setting up transforms with data augmentation...")
+# Data Augmentation modérée - trop d'augmentation peut nuire
+print("Setting up transforms with moderate data augmentation...")
 
 train_transform = transforms.Compose([
     transforms.ToPILImage(),
     transforms.RandomHorizontalFlip(p=0.5),  # Flip horizontal aléatoire
-    transforms.RandomRotation(10),  # Rotation aléatoire ±10°
+    transforms.RandomRotation(5),  # Réduit de 10° à 5° - expressions faciales sensibles à la rotation
     transforms.RandomAffine(
         degrees=0, 
-        translate=(0.1, 0.1),  # Translation aléatoire
-        scale=(0.9, 1.1)  # Zoom aléatoire
+        translate=(0.05, 0.05),  # Réduit de 0.1 à 0.05
+        scale=(0.95, 1.05)  # Réduit de (0.9, 1.1)
     ),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2),  # Variation luminosité/contraste
+    transforms.ColorJitter(brightness=0.1, contrast=0.1),  # Réduit de 0.2
     transforms.ToTensor(),
 ])
 
@@ -55,7 +57,22 @@ print("Loading dataset...")
 ferplus_file = './data/fer2013new.csv'
 fer_file = './data/fer2013.csv'
 
-if IMPROVED_DATASET and os.path.exists(ferplus_file):
+# Fonction pour calculer les poids de classe (intégrée pour éviter les bugs)
+def compute_class_weights(labels, num_classes):
+    """Calcule les poids inversement proportionnels à la fréquence des classes."""
+    class_counts = np.bincount(labels, minlength=num_classes)
+    class_counts = np.maximum(class_counts, 1)  # Éviter division par zéro
+    weights = 1.0 / class_counts
+    weights = weights / weights.sum() * num_classes
+    
+    emotions = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sad', 'Surprise', 'Neutral', 'Contempt'][:num_classes]
+    print("\nClass distribution:")
+    for i, (emotion, count, weight) in enumerate(zip(emotions, class_counts, weights)):
+        print(f"  {emotion}: {count} samples, weight: {weight:.3f}")
+    
+    return torch.FloatTensor(weights)
+
+if USE_FERPLUS and IMPROVED_DATASET and os.path.exists(ferplus_file):
     print("✓ Using FER+ dataset with corrected annotations!")
     # Charger FER+ pour train et validation séparément
     train_dataset_raw = FERPlusDataset(
@@ -73,11 +90,17 @@ if IMPROVED_DATASET and os.path.exists(ferplus_file):
         ignore_uncertain=True
     )
     
-    # Calculer les poids de classe pour équilibrer
-    print("\nCalculating class weights...")
-    class_weights = get_class_weights(train_dataset_raw)
+    # Extraire les labels pour calculer les poids
+    print("\nExtracting labels for class balancing...")
+    train_labels = []
+    for i in range(len(train_dataset_raw)):
+        _, label = train_dataset_raw[i]
+        train_labels.append(label)
+    train_labels = np.array(train_labels)
+    
+    class_weights = compute_class_weights(train_labels, NUM_CLASSES)
     criterion = nn.CrossEntropyLoss(weight=class_weights.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu')))
-    USE_BALANCED_SAMPLER = True
+    USE_BALANCED_SAMPLER = False  # Désactivé - les class weights suffisent et sont plus stables
     
 else:
     print("Using FER2013 dataset (consider downloading FER+ for better results)")
@@ -122,10 +145,28 @@ print(f"Training samples: {len(train_dataset)}, Validation samples: {len(val_dat
 
 print("Creating DataLoaders...")
 
-# Utiliser un sampler équilibré si disponible
-if IMPROVED_DATASET and USE_BALANCED_SAMPLER:
+# Utiliser un sampler équilibré si nécessaire (désactivé par défaut)
+if USE_BALANCED_SAMPLER:
     print("✓ Using balanced sampler to handle class imbalance")
-    train_sampler = get_balanced_sampler(train_dataset)
+    # Extraire les labels pour le sampler
+    sampler_labels = []
+    for i in range(len(train_dataset)):
+        _, label = train_dataset[i]
+        if isinstance(label, torch.Tensor):
+            label = label.item()
+        sampler_labels.append(label)
+    sampler_labels = np.array(sampler_labels)
+    
+    class_counts = np.bincount(sampler_labels, minlength=NUM_CLASSES)
+    class_counts = np.maximum(class_counts, 1)
+    weights = 1.0 / class_counts
+    sample_weights = list(weights[sampler_labels])  # Convert to list for type safety
+    
+    train_sampler = WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(sample_weights),
+        replacement=True
+    )
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, sampler=train_sampler, num_workers=0, pin_memory=True)
 else:
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, pin_memory=True)
@@ -145,9 +186,15 @@ if 'criterion' not in dir():
 
 optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
 
-# Learning Rate Scheduler - réduit le LR quand la validation stagne
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, mode='min', factor=0.5, patience=3
+# Learning Rate Scheduler - OneCycleLR pour meilleure convergence
+# Alternative: ReduceLROnPlateau si OneCycleLR ne fonctionne pas bien
+scheduler = optim.lr_scheduler.OneCycleLR(
+    optimizer, 
+    max_lr=LEARNING_RATE * 10,  # LR max = 10x le LR initial
+    epochs=EPOCHS,
+    steps_per_epoch=len(train_loader),
+    pct_start=0.3,  # 30% warmup
+    anneal_strategy='cos'
 )
 
 # Compteur de paramètres
@@ -205,6 +252,7 @@ for epoch in range(EPOCHS):
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         
         optimizer.step()
+        scheduler.step()  # OneCycleLR step après chaque batch
 
         running_loss += loss.item()
         _, predicted = torch.max(outputs.data, 1)
@@ -217,8 +265,7 @@ for epoch in range(EPOCHS):
     # Validation
     val_loss, val_acc = validate(model, val_loader, criterion, device)
     
-    # Update scheduler
-    scheduler.step(val_loss)
+    # Pas de scheduler.step() ici car OneCycleLR step après chaque batch
     
     current_lr = optimizer.param_groups[0]['lr']
     
@@ -258,7 +305,7 @@ print(f"Best validation accuracy: {best_val_acc:.2f}%")
 print(f"Best validation loss: {best_val_loss:.4f}")
 
 # Charger le meilleur modèle et sauvegarder les poids finaux
-checkpoint = torch.load('emotion_model_best.pth')
+checkpoint = torch.load('emotion_model_best.pth', weights_only=True)
 model.load_state_dict(checkpoint['model_state_dict'])
 torch.save(model.state_dict(), 'emotion_model.pth')
 print("\nBest model weights saved to 'emotion_model.pth'")

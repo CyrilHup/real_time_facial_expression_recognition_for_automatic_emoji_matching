@@ -114,7 +114,8 @@ if not cap or not cap.isOpened():
     exit(1)
 
 # Détection de visage avec paramètres optimisés
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+haarcascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'  # type: ignore
+face_cascade = cv2.CascadeClassifier(haarcascade_path)
 
 current_emoji = ""
 show_all_emotions = False  # Toggle pour afficher toutes les probabilités
@@ -202,7 +203,8 @@ while True:
             roi_gray = cv2.equalizeHist(roi_gray)
             
             # Prepare image for AI
-            roi_tensor = data_transform(roi_gray).unsqueeze(0).to(device)
+            roi_tensor: torch.Tensor = data_transform(roi_gray)  # type: ignore
+            roi_tensor = roi_tensor.unsqueeze(0).to(device)
 
             # Predict
             with torch.no_grad():
@@ -214,7 +216,7 @@ while True:
                 
                 max_prob, predicted_idx = torch.max(smoothed_probs, 0)
                 
-                idx = predicted_idx.item()
+                idx = int(predicted_idx.item())
                 confidence = max_prob.item() * 100
                 emotion_text = emotion_dict[idx]
                 current_emoji = emoji_only[idx]

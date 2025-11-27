@@ -1,5 +1,13 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
-    "python-envs.pythonProjects": []
+    "python-envs.pythonProjects": [],
+    "latex-workshop.chktex.args.active": [
+        "-wall",
+        "-n8",
+        "-n18",
+        "-n26",
+        "-e16",
+        "-q"
+    ]
 }
