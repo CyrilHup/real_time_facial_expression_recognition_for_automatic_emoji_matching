@@ -54,7 +54,7 @@ conda activate fer_project
 ### 3. Install dependencies
 
 ```bash
-pip install torch torchvision pandas opencv-python pillow pyperclip albumentations
+pip install torch torchvision pandas opencv-python pillow pyperclip albumentations mediapipe
 ```
 
 ### 4. Download the Balanced AffectNet Dataset
@@ -90,13 +90,25 @@ This will train the CNN model on the Balanced AffectNet dataset and save it as `
 
 ### Run the application
 
+You can run different versions of the application depending on your needs:
+
+**Basic Version (Fast & Simple):**
 ```bash
 python app.py
+```
+
+**Advanced Version (Recommended):**
+Includes hand gesture recognition, facial feature analysis, and improved accuracy.
+```bash
+python app_v3.py
 ```
 
 **Controls:**
 - Press `q` to quit
 - Press `s` to copy the current emoji to clipboard
+- Press `e` to toggle emotion probability bars (v3)
+- Press `f` to toggle facial feature analysis (v3)
+- Press `h` to toggle hand tracking (v3)
 
 ## Model Architecture
 
@@ -129,7 +141,8 @@ FC(128→8) → Output
 ## Project Structure
 
 ```
-├── app.py                  # Real-time webcam application
+├── app.py                  # Basic real-time webcam application
+├── app_v3.py               # Advanced app with hand gestures & feature analysis
 ├── train_affectnet.py      # Training script for AffectNet
 ├── model.py                # CNN architecture definition
 ├── dataset_affectnet.py    # Balanced AffectNet dataset loader
@@ -158,6 +171,7 @@ FC(128→8) → Output
 - OpenCV 4.0+
 - Pillow
 - albumentations
+- mediapipe
 - pyperclip
 
 ## License
