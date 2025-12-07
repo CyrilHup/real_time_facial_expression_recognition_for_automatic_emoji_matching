@@ -569,7 +569,7 @@ def train():
                     'input_size': config.INPUT_SIZE,
                     'dataset': 'affectnet',
                 }
-            }, 'emotion_model_best.pth')
+            }, 'emotion_affectnet_model_best.pth')
             print(f"  ✓ New best model! (Val Acc: {val_acc:.2f}%)")
         else:
             patience_counter += 1
@@ -589,7 +589,7 @@ def train():
     
     # Final per-class evaluation
     print("\nFinal per-class evaluation on best model:")
-    checkpoint = torch.load('emotion_model_best.pth', weights_only=False)
+    checkpoint = torch.load('emotion_affectnet_model_best.pth', weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     validate(model, val_loader, val_criterion, config.DEVICE, per_class=True)
     
@@ -600,8 +600,8 @@ def train():
         'in_channels': config.IN_CHANNELS,
         'input_size': config.INPUT_SIZE,
         'dataset': 'affectnet',
-    }, 'emotion_model.pth')
-    print("\nModel saved to 'emotion_model.pth'")
+    }, 'emotion_affectnet_model.pth')
+    print("\nModel saved to 'emotion_affectnet_model.pth'")
 
 
 if __name__ == "__main__":

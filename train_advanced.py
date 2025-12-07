@@ -46,6 +46,7 @@ class Config:
     
     # Model
     NUM_CLASSES = 8  # 7 FER + Contempt
+    IN_CHANNELS = 1  # Grayscale images
     
     # Training - same as working train.py
     BATCH_SIZE = 64
@@ -613,7 +614,7 @@ def train():
     print(f"\nTrain: {len(train_dataset)} samples, Val: {len(val_dataset)} samples")
     
     # Create model
-    model = FaceEmotionCNN(num_classes=config.NUM_CLASSES).to(config.DEVICE)
+    model = FaceEmotionCNN(num_classes=config.NUM_CLASSES, in_channels=config.IN_CHANNELS).to(config.DEVICE)
     
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {total_params:,}")
