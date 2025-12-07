@@ -9,7 +9,7 @@ from model import FaceEmotionCNN
 
 # Configuration pour AffectNet
 NUM_CLASSES = 8  # 8 émotions AffectNet
-IN_CHANNELS = 3  # RGB
+IN_CHANNELS = 1  # RGB
 INPUT_SIZE = 75  # 75x75 pixels
 
 # 1. Load the Model

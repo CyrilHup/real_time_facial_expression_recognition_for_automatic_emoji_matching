@@ -22,7 +22,7 @@ from typing import Dict, List, Tuple, Optional
 # CONFIGURATION
 # ============================================
 NUM_CLASSES = 8
-IMG_SIZE = 75  # AffectNet uses 75x75 RGB images
+IMG_SIZE = 48  # FER+ uses 48x48 Grayscale images
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 BASE_EMOTIONS = {
@@ -59,8 +59,8 @@ class EmotionClassifier:
     
     def __init__(self, model_path: str, device: torch.device):
         self.device = device
-        # Use create_model for RGB 75x75 input (AffectNet)
-        self.model = create_model(num_classes=NUM_CLASSES, dataset='affectnet').to(device)
+        # Use create_model for Grayscale 48x48 input (FER+)
+        self.model = create_model(num_classes=NUM_CLASSES, dataset='ferplus').to(device)
         
         # Load weights
         checkpoint = torch.load(model_path, map_location=device, weights_only=False)
@@ -70,15 +70,11 @@ class EmotionClassifier:
             self.model.load_state_dict(checkpoint)
         self.model.eval()
         
-        # Preprocessing for RGB 75x75 with ImageNet normalization
+        # Preprocessing for Grayscale 48x48
         self.base_transform = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize((IMG_SIZE, IMG_SIZE)),
             transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]
-            ),
         ])
         
         # TTA transforms (light augmentations)
@@ -87,20 +83,12 @@ class EmotionClassifier:
                 transforms.ToPILImage(),
                 transforms.Resize((IMG_SIZE, IMG_SIZE)),
                 transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225]
-                ),
             ]),
             transforms.Compose([
                 transforms.ToPILImage(),
                 transforms.Resize((IMG_SIZE, IMG_SIZE)),
                 transforms.RandomHorizontalFlip(p=1.0),  # Flip
                 transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225]
-                ),
             ]),
         ]
         
@@ -121,20 +109,15 @@ class EmotionClassifier:
         self.history = deque(maxlen=7)
         
     def preprocess(self, face_roi: np.ndarray) -> np.ndarray:
-        """Enhanced preprocessing for RGB images"""
-        # Ensure RGB format (should already be RGB)
-        if len(face_roi.shape) == 2:
-            # If grayscale, convert to RGB
-            face_roi = cv2.cvtColor(face_roi, cv2.COLOR_GRAY2RGB)
-        elif face_roi.shape[2] == 4:
-            # If RGBA, convert to RGB
-            face_roi = cv2.cvtColor(face_roi, cv2.COLOR_RGBA2RGB)
+        """Enhanced preprocessing for Grayscale images"""
+        # Ensure Grayscale format
+        if len(face_roi.shape) == 3:
+            # If RGB/BGR, convert to Grayscale
+            face_roi = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
         
-        # Apply CLAHE to each channel for better contrast
+        # Apply CLAHE for better contrast
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
-        channels = cv2.split(face_roi)
-        clahe_channels = [clahe.apply(ch) for ch in channels]
-        face_roi = cv2.merge(clahe_channels)
+        face_roi = clahe.apply(face_roi)
         
         return face_roi
     
