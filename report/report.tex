@@ -59,7 +59,7 @@
 \maketitle
 
 \begin{abstract}
-Ce rapport présente le développement d'un système de reconnaissance d'émotions faciales en temps réel utilisant des réseaux de neurones convolutifs (CNN). Nous détaillons l'architecture initiale, les optimisations apportées, ainsi que les choix techniques effectués pour améliorer les performances de détection. Le système est capable de classifier huit émotions (colère, dégoût, peur, joie, tristesse, surprise, neutralité, et mépris) à partir d'un flux vidéo webcam, en utilisant le dataset Balanced AffectNet.
+Ce rapport présente le développement d'un système de reconnaissance d'émotions faciales en temps réel utilisant des réseaux de neurones convolutifs (CNN). Nous détaillons l'architecture initiale, les optimisations apportées, ainsi que les choix techniques effectués pour améliorer les performances de détection. Le système est capable de classifier huit émotions (colère, dégoût, peur, joie, tristesse, surprise, neutralité, et mépris) à partir d'un flux vidéo webcam, en utilisant une approche multi-sources unifiée (AffectNet + FER+).
 \end{abstract}
 
 \tableofcontents
@@ -83,22 +83,20 @@ La reconnaissance automatique des émotions faciales est un domaine en pleine ex
 \section{Architecture Initiale}
 %==============================================================================
 
-\subsection{Dataset : Balanced AffectNet}
+\subsection{Dataset : Approche Multi-Sources Unifiée}
 
-Le dataset Balanced AffectNet est une version équilibrée et pré-traitée du dataset AffectNet original. Il contient :
+Pour maximiser la robustesse du modèle, nous avons adopté une stratégie de fusion de datasets. Le système utilise désormais un **dataset unifié à 8 classes** combinant :
+
 \begin{itemize}
-    \item 41 008 images de visages en couleur (RGB)
-    \item Résolution : 75$\times$75 pixels
-    \item 8 classes d'émotions parfaitement équilibrées ($\sim$5 126 images par classe)
-    \item Split prédéfini : train (29 526), val (7 382), test (4 100)
+    \item \textbf{Balanced AffectNet} : Source principale ($\sim$41k images, RGB 75$\times$75).
+    \item \textbf{FER+} : Version améliorée de FER2013 avec labels corrigés par vote (Microsoft), upscalée à 75$\times$75.
 \end{itemize}
 
-\textbf{Avantages par rapport à FER2013 :}
+\textbf{Avantages de cette approche :}
 \begin{itemize}
-    \item Images RGB offrant plus d'informations (couleur de peau, rougeurs)
-    \item Résolution supérieure (75$\times$75 vs 48$\times$48)
-    \item Dataset parfaitement équilibré (pas de biais de classe)
-    \item Classe Contempt (mépris) incluse nativement
+    \item \textbf{Volume de données accru} : Combine la diversité d'AffectNet avec les cas difficiles de FER+.
+    \item \textbf{Labels de haute qualité} : Utilisation exclusive de datasets vérifiés (FER+ vs FER2013 original).
+    \item \textbf{Mapping Unifié} : Toutes les sources sont mappées vers les 8 émotions standards (Anger, Disgust, Fear, Happy, Sad, Surprise, Neutral, Contempt).
 \end{itemize}
 
 \subsection{Modèle Initial (\texttt{model.py})}
@@ -351,6 +349,9 @@ class FaceEmotionCNN(nn.Module):
     \begin{equation}
         W \sim \mathcal{N}\left(0, \sqrt{\frac{2}{n_{in}}}\right)
     \end{equation}
+
+    \item \textbf{Squeeze-and-Excitation (SE) Blocks} \\
+    Intégration de modules d'attention SE qui recalibrent dynamiquement les features maps par canal, permettant au réseau de se concentrer sur les caractéristiques les plus pertinentes pour l'émotion.
 \end{enumerate}
 
 \begin{table}[H]
@@ -367,6 +368,7 @@ Paramètres totaux & $\approx$2.46M & $\approx$4.8M \\
 Global Average Pooling & Non & Oui \\
 Dropout conv & Non & Oui (0.25) \\
 Batch Norm FC & Non & Oui \\
+Attention & Non & SE-Blocks \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -596,9 +598,9 @@ emotion_colors = {
 \section{Amélioration du Dataset}
 %==============================================================================
 
-\subsection{Avantages du Balanced AffectNet}
+\subsection{Avantages de l'Approche Multi-Sources}
 
-Par rapport à FER2013, le dataset Balanced AffectNet présente plusieurs avantages majeurs :
+Par rapport à FER2013, notre dataset unifié présente plusieurs avantages majeurs :
 
 \begin{enumerate}
     \item \textbf{Résolution supérieure} : Images 75$\times$75 pixels (vs 48$\times$48)
@@ -619,7 +621,7 @@ Par rapport à FER2013, le dataset Balanced AffectNet présente plusieurs avanta
     Surprise & 5,126 & 12.5\% \\
     \bottomrule
     \end{tabular}
-    \caption{Distribution parfaitement équilibrée des classes dans Balanced AffectNet.}
+    \caption{Distribution des classes dans le dataset unifié.}
     \end{table}
     
     \item \textbf{Dataset équilibré} : Pas de biais de classe, contrairement à FER2013
@@ -629,10 +631,10 @@ Par rapport à FER2013, le dataset Balanced AffectNet présente plusieurs avanta
 
 \subsection{Chargement du Dataset}
 
-Le dataset Balanced AffectNet est organisé en dossiers par émotion :
+Le dataset unifié est organisé en dossiers par émotion :
 
-\begin{lstlisting}[caption={Utilisation du dataset AffectNet}]
-class BalancedAffectNetDataset(Dataset):
+\begin{lstlisting}[caption={Utilisation du dataset unifié}]
+class UnifiedDataset(Dataset):
     EMOTION_CLASSES = {
         'Anger': 0, 'Disgust': 1, 'Fear': 2, 'Happy': 3,
         'Sad': 4, 'Surprise': 5, 'Neutral': 6, 'Contempt': 7,
@@ -704,7 +706,7 @@ Le sampler sur-échantillonne les classes minoritaires pendant l'entraînement.
 \section{Techniques d'Entraînement Avancées}
 %==============================================================================
 
-Pour améliorer significativement les performances, notamment sur les classes difficiles (Disgust, Contempt, Fear, Angry), nous avons développé un script d'entraînement avancé (\texttt{train\_advanced.py}) intégrant les techniques les plus récentes du deep learning.
+Pour améliorer significativement les performances, notamment sur les classes difficiles (Disgust, Contempt, Fear, Angry), nous avons développé un workflow d'entraînement avancé (notebook Jupyter) intégrant les techniques les plus récentes du deep learning.
 
 \subsection{Focal Loss pour le Déséquilibre des Classes}
 
@@ -928,6 +930,18 @@ $\eta_t = \eta_\text{min} + \frac{1}{2}(\eta_\text{max} - \eta_\text{min})(1 + \
 }}
 \caption{Le learning rate diminue selon une courbe cosinus puis remonte à chaque restart}
 \end{figure}
+
+\subsection{Optimisations Matérielles et Vitesse}
+
+Pour accélérer l'entraînement sur des datasets volumineux, nous avons exploité les capacités modernes de PyTorch 2.0+ :
+
+\begin{itemize}
+    \item \textbf{Automatic Mixed Precision (AMP)} : Utilisation de \texttt{float16} pour les calculs tensoriels, réduisant l'empreinte mémoire et accélérant les opérations sur GPU (Tensor Cores).
+    \item \textbf{torch.compile} : Compilation JIT du modèle avec le mode \texttt{max-autotune}, optimisant le graphe de calcul pour l'architecture spécifique du GPU.
+    \item \textbf{Optimisations CUDA} : Activation de TF32 (TensorFloat-32) et tuning des kernels cuDNN.
+\end{itemize}
+
+Ces optimisations permettent d'utiliser des batch sizes plus importants (jusqu'à 1536) et de réduire le temps d'entraînement par époque.
 
 %==============================================================================
 \section{Application Étendue avec MediaPipe}
@@ -1298,7 +1312,7 @@ Pour des performances encore meilleures, d'autres datasets sont supportés :
 \midrule
 FER2013 & 35,887 & 48$\times$48 (Gray) & 7 & Gratuit (Kaggle) \\
 FER+ & 35,887 & 48$\times$48 (Gray) & 8 & Gratuit (GitHub) \\
-\textbf{Balanced AffectNet} & \textbf{41,008} & \textbf{75$\times$75 (RGB)} & \textbf{8} & \textbf{Gratuit (Kaggle)} \\
+\textbf{Dataset Unifié} & \textbf{41,008} & \textbf{75$\times$75 (RGB)} & \textbf{8} & \textbf{Gratuit (Kaggle)} \\
 AffectNet (original) & 450,000 & Variable & 8 & Demande requise \\
 RAF-DB & 30,000 & 100$\times$100 & 7 & Demande requise \\
 \bottomrule
@@ -1334,13 +1348,13 @@ class AffectNetDataset(Dataset):
 
 \begin{table}[H]
 \centering
-\caption{Amélioration attendue de la précision avec Balanced AffectNet}
+\caption{Amélioration attendue de la précision avec le Dataset Unifié}
 \begin{tabular}{lcc}
 \toprule
 \textbf{Configuration} & \textbf{Précision estimée} & \textbf{Gain} \\
 \midrule
 FER2013 baseline (grayscale 48$\times$48) & 60-65\% & - \\
-Balanced AffectNet (RGB 75$\times$75) & 70-75\% & +10\% \\
+Dataset Unifié (RGB 75$\times$75) & 70-75\% & +10\% \\
 + Data augmentation RGB & 73-78\% & +3\% \\
 + Mixup/CutMix & 76-80\% & +3\% \\
 + Label Smoothing & 78-82\% & +2\% \\
@@ -1358,7 +1372,7 @@ Balanced AffectNet (RGB 75$\times$75) & 70-75\% & +10\% \\
 \caption{Impact attendu sur les classes (avec dataset équilibré)}
 \begin{tabular}{lccc}
 \toprule
-\textbf{Émotion} & \textbf{FER2013 Baseline} & \textbf{Balanced AffectNet} & \textbf{Gain} \\
+\textbf{Émotion} & \textbf{FER2013 Baseline} & \textbf{Dataset Unifié} & \textbf{Gain} \\
 \midrule
 Angry & 55\% & 75\% & +20\% \\
 Disgust & 35\% & 72\% & +37\% \\
@@ -1442,8 +1456,9 @@ Final_project/
 |-- app_extended_v2.py       # Version avec gestes de la main
 |-- app_v3.py                # Version optimisee (TTA, CLAHE, modulaire)
 |-- model.py                 # Architecture CNN (RGB 75x75)
-|-- train_affectnet.py       # Entrainement sur Balanced AffectNet
-|-- train.py                 # Script d'entrainement (legacy FER2013)
+|-- train_affectnet_notebook.ipynb # Notebook d'entrainement (Multi-source)
+|-- train_affectnet.py       # Script d'entrainement (Legacy)
+|-- train.py                 # Script d'entrainement (Legacy FER2013)
 |-- dataset_affectnet.py     # Dataset Balanced AffectNet
 |-- dataset.py               # Dataset FER2013 (legacy)
 |-- download_datasets.py     # Script de telechargement des datasets

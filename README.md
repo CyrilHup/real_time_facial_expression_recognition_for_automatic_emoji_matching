@@ -28,12 +28,23 @@ A deep learning application that detects facial expressions in real-time using y
 
 ## Dataset
 
-This project uses the **Balanced AffectNet** dataset:
-- Source: [Kaggle - Balanced AffectNet](https://www.kaggle.com/datasets/dollyprajapati182/balanced-affectnet)
-- 41,008 images total
-- 8 emotion classes (~5,126 images per class)
-- RGB images at 75×75 pixels
-- Pre-balanced for better training
+Training now uses a **multi-source, unified 8-class dataset**:
+- **Balanced AffectNet (RGB, 75×75)** — main source (~41k images, 8 classes)
+- **FER+ (48×48 → upscaled to 75×75)** — FER2013 images with Microsoft-voted labels (adds **Contempt**)
+- (Optional) **FER2013** — legacy labels (7 classes); avoid mixing with FER+ at the same time because they share images.
+
+The notebook auto-downloads datasets with `kagglehub` and builds a combined loader that maps every source to the same 8 emotions: Anger, Disgust, Fear, Happy, Sad, Surprise, Neutral, Contempt.
+
+Manual placement (if you download yourself):
+```
+data/
+├── affectnet/
+│   ├── train|val|test/Anger|Disgust|Fear|Happy|Sad|Surprise|Neutral|Contempt/
+├── ferplus_generated/           # produced from FER2013 CSV + fer2013new.csv
+│   ├── FER2013Train|FER2013Valid|FER2013Test/
+│   └── fer2013new.csv
+└── fer2013/ (optional legacy, 7 classes)
+```
 
 ## Installation
 
@@ -82,11 +93,17 @@ data/
 
 ### Train the model
 
+**Recommended (multi-dataset, optimized):** run the notebook `train_affectnet_notebook (2).ipynb` which:
+- Downloads AffectNet + FER+ via `kagglehub`
+- Merges them with the unified `CombinedEmotionDataset`
+- Uses AMP + `torch.compile` for fast large-batch training
+- Saves the best weights to `emotion_model_best.pth` and a deployable `emotion_model.pth`
+
+**Legacy script (single-dataset):**
 ```bash
 python train_affectnet.py
 ```
-
-This will train the CNN model on the Balanced AffectNet dataset and save it as `emotion_model.pth`.
+Trains on AffectNet only and produces `emotion_model.pth`.
 
 ### Run the application
 
@@ -158,11 +175,14 @@ FC(128→8) → Output
 
 ## Training Features
 
-- **Mixup Augmentation**: Blend samples for better generalization
-- **Label Smoothing**: Prevent overconfidence
-- **Advanced Augmentation**: Using Albumentations library
-- **OneCycleLR Scheduler**: Optimal learning rate scheduling
-- **Early Stopping**: Prevent overfitting
+- **Multi-dataset fusion**: AffectNet + FER+ (unified 8-class mapping); optional FER2013 fallback
+- **SE-Block CNN**: Attention-enhanced conv blocks with global avg pooling
+- **Advanced augmentation**: Albumentations (flip, affine, noise/blur, color jitter, coarse dropout) + balanced intensity
+- **Mixup (on)**, CutMix (off by default), **Label Smoothing**; optional Focal Loss
+- **Class balancing**: adaptive class weights; oversized batches with gradient clipping
+- **Optimizers**: AdamW + OneCycleLR; **AMP** + **torch.compile (max-autotune)** for speed
+- **Regularization**: dropout, weight decay, early stopping, optional SWA
+- **Evaluation**: per-class metrics and optional TTA (flip + brightness variants)
 
 ## Requirements
 

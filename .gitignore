@@ -24,29 +24,4 @@ env/
 Thumbs.db
 
 # LaTeX build files
-*.aux
-*.log
-*.out
-*.toc
-*.lof
-*.lot
-*.fls
-*.fdb_latexmk
-*.synctex.gz
-*.synctex(busy)
-*.bbl
-*.blg
-*.nav
-*.snm
-*.vrb
-*.bcf
-*.run.xml
-report/*.aux
-report/*.log
-report/*.out
-report/*.toc
-report/*.synctex.gz
-report/*.pdf
-
-# Temporary folders
-temp_ferplus/
+report/
