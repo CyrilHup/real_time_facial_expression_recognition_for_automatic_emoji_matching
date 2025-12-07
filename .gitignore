@@ -13,6 +13,7 @@ __pycache__/
 # Virtual environments
 .conda/
 venv/
+venv310/
 env/
 
 # IDE
@@ -22,6 +23,10 @@ env/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Archives
+*.zip
+archive.zip
 
 # LaTeX build files
 report/
