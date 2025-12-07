@@ -65,7 +65,7 @@ conda activate fer_project
 ### 3. Install dependencies
 
 ```bash
-pip install torch torchvision pandas opencv-python pillow pyperclip albumentations mediapipe
+pip install torch torchvision pandas opencv-python pillow pyperclip albumentations mediapipe kaggle
 ```
 
 ### 4. Download the Balanced AffectNet Dataset
