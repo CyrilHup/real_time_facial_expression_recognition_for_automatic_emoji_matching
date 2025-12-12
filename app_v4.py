@@ -24,6 +24,15 @@ import mediapipe as mp
 from typing import Dict, List, Tuple, Optional
 import os
 import time
+
+# Try to import ONNX Runtime for optimized inference
+try:
+    import onnxruntime as ort
+    ONNX_AVAILABLE = True
+except ImportError:
+    ONNX_AVAILABLE = False
+    ort = None
+import time
 from dataclasses import dataclass
 from enum import Enum
 
@@ -192,18 +201,50 @@ class EmotionClassifier:
     def __init__(self, model_path: str, device: torch.device):
         self.device = device
         self.model_path = model_path
+        self.use_onnx = False
+        self.onnx_session = None
         
-        # Load model using smart loader (handles all architectures)
-        print(f"Loading model from: {model_path}")
-        self.model, model_info = load_model_smart(model_path, device)
+        # Check if ONNX model exists and ONNX Runtime is available
+        onnx_path = model_path.replace('.pth', '.onnx').replace('.pt', '.onnx')
+        if ONNX_AVAILABLE and os.path.exists(onnx_path) and onnx_path != model_path:
+            print(f"Loading ONNX model from: {onnx_path}")
+            try:
+                # Create ONNX Runtime session
+                providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if device.type == 'cuda' else ['CPUExecutionProvider']
+                self.onnx_session = ort.InferenceSession(onnx_path, providers=providers)
+                self.use_onnx = True
+                
+                # Get model info from PyTorch checkpoint to configure dataset
+                checkpoint = torch.load(model_path, map_location='cpu')
+                state_dict = checkpoint.get('model_state_dict', checkpoint)
+                
+                # Detect num_classes and in_channels from ONNX metadata
+                input_meta = self.onnx_session.get_inputs()[0]
+                output_meta = self.onnx_session.get_outputs()[0]
+                
+                self.in_channels = input_meta.shape[1]  # [batch, channels, h, w]
+                self.num_classes = output_meta.shape[1]  # [batch, num_classes]
+                
+                print(f"  ✓ ONNX Runtime loaded (optimized inference)")
+                print(f"  Provider: {self.onnx_session.get_providers()[0]}")
+                self.model = None  # Don't load PyTorch model
+            except Exception as e:
+                print(f"  ⚠ ONNX loading failed, falling back to PyTorch: {e}")
+                self.use_onnx = False
+                self.onnx_session = None
         
-        # Extract configuration from model info
-        self.num_classes = model_info['num_classes']
-        self.in_channels = model_info['in_channels']
+        # Load PyTorch model if ONNX not available
+        if not self.use_onnx:
+            print(f"Loading model from: {model_path}")
+            self.model, model_info = load_model_smart(model_path, device)
+            
+            # Extract configuration from model info
+            self.num_classes = model_info['num_classes']
+            self.in_channels = model_info['in_channels']
         
         # Detect dataset type based on model info
-        if model_info['in_channels'] == 1:
-            if model_info['num_classes'] == 7:
+        if self.in_channels == 1:
+            if self.num_classes == 7:
                 self.dataset_type = DatasetType.FER2013
             else:
                 self.dataset_type = DatasetType.FERPLUS
@@ -212,7 +253,8 @@ class EmotionClassifier:
         
         self.config = ModelDetector.get_config(self.dataset_type)
         
-        print(f"  Architecture: {model_info['architecture']}")
+        if not self.use_onnx:
+            print(f"  Architecture: {model_info['architecture']}")
         print(f"  Detected dataset: {self.config.name}")
         print(f"  Classes: {self.num_classes}, Channels: {self.in_channels}")
         print(f"  Image size: {self.config.img_size}x{self.config.img_size}")
@@ -312,6 +354,69 @@ class EmotionClassifier:
         
         return face_roi
     
+    def predict_onnx(self, face_roi: np.ndarray, use_tta: bool = True) -> Tuple[str, float, np.ndarray]:
+        """
+        ONNX-optimized prediction (2-3x faster)
+        Returns: (emotion_name, confidence, all_probabilities)
+        """
+        face_roi = self.preprocess(face_roi)
+        
+        # Convert to PIL and resize
+        img_size = self.config.img_size
+        if self.in_channels == 1:
+            face_pil = Image.fromarray(face_roi).convert('L')
+        else:
+            face_pil = Image.fromarray(face_roi)
+        
+        face_pil = face_pil.resize((img_size, img_size))
+        
+        # Convert to tensor and normalize
+        face_tensor = transforms.ToTensor()(face_pil)
+        if self.config.use_normalization:
+            face_tensor = transforms.Normalize(mean=self.config.mean, std=self.config.std)(face_tensor)
+        
+        face_input = face_tensor.unsqueeze(0).numpy()  # ONNX needs numpy
+        
+        # Run inference
+        if use_tta:
+            # Test-Time Augmentation with ONNX
+            predictions = []
+            
+            # Original
+            ort_inputs = {self.onnx_session.get_inputs()[0].name: face_input}
+            ort_outs = self.onnx_session.run(None, ort_inputs)
+            predictions.append(ort_outs[0][0])
+            
+            # Horizontal flip
+            face_flip = np.flip(face_input, axis=3).copy()
+            ort_inputs = {self.onnx_session.get_inputs()[0].name: face_flip}
+            ort_outs = self.onnx_session.run(None, ort_inputs)
+            predictions.append(ort_outs[0][0])
+            
+            # Average predictions
+            logits = np.mean(predictions, axis=0)
+        else:
+            # Single inference
+            ort_inputs = {self.onnx_session.get_inputs()[0].name: face_input}
+            ort_outs = self.onnx_session.run(None, ort_inputs)
+            logits = ort_outs[0][0]
+        
+        # Softmax
+        exp_logits = np.exp(logits - np.max(logits))
+        probs = exp_logits / np.sum(exp_logits)
+        
+        # Apply emotion adjustments
+        for idx, adjustment in self.emotion_adjustments.items():
+            probs[idx] *= adjustment
+        probs = probs / probs.sum()
+        
+        # Get prediction
+        pred_idx = np.argmax(probs)
+        confidence = probs[pred_idx]
+        emotion = self.config.emotions.get(pred_idx, "unknown")
+        
+        return emotion, confidence, probs
+    
     def predict(self, face_roi: np.ndarray, use_tta: bool = True) -> Tuple[str, float, np.ndarray]:
         """
         Predict emotion with optional TTA
@@ -319,6 +424,17 @@ class EmotionClassifier:
         """
         start_time = time.perf_counter()
         
+        # Use ONNX if available (faster)
+        if self.use_onnx:
+            emotion, confidence, probs = self.predict_onnx(face_roi, use_tta)
+            
+            # Track performance
+            inference_time = (time.perf_counter() - start_time) * 1000
+            self.inference_times.append(inference_time)
+            
+            return emotion, confidence, probs
+        
+        # PyTorch inference (fallback)
         face_roi = self.preprocess(face_roi)
         
         with torch.no_grad():
@@ -845,8 +961,9 @@ def draw_info_panel(frame, classifier: EmotionClassifier, fps: float):
     # Background panel
     cv2.rectangle(frame, (0, 0), (w, 35), (30, 30, 30), -1)
     
-    # Dataset info
-    dataset_text = f"Model: {classifier.config.name}"
+    # Dataset info with ONNX indicator
+    model_type = " [ONNX]" if classifier.use_onnx else ""
+    dataset_text = f"Model: {classifier.config.name}{model_type}"
     cv2.putText(frame, dataset_text, (10, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 255, 100), 1)
     
     # Performance info
@@ -915,13 +1032,22 @@ def draw_button_bar(frame, buttons: Dict[str, Tuple[str, bool]]):
 # MODEL SELECTION
 # ============================================
 def find_models() -> List[str]:
-    """Find available model files"""
+    """Find available model files (.pth, .pt, .onnx)"""
     models = []
-    patterns = ['*.pth', '*.pt']
-    
     current_dir = os.path.dirname(os.path.abspath(__file__))
+    
     for file in os.listdir(current_dir):
-        if file.endswith('.pth') or file.endswith('.pt'):
+        if file.endswith(('.pth', '.pt', '.onnx')):
+            # Prefer .pth/.pt files (ONNX loaded automatically)
+            base_name = file.replace('.onnx', '').replace('.pth', '').replace('.pt', '')
+            pth_exists = os.path.exists(os.path.join(current_dir, base_name + '.pth')) or \
+                         os.path.exists(os.path.join(current_dir, base_name + '.pt'))
+            
+            # If ONNX available and Runtime installed, prefer PyTorch files (ONNX loaded automatically)
+            # This way user selects .pth and gets .onnx speedup automatically
+            if file.endswith('.onnx') and pth_exists:
+                continue  # Skip .onnx in list, will be loaded automatically from .pth
+            
             models.append(file)
     
     return sorted(models)
@@ -932,12 +1058,16 @@ def select_model() -> str:
     models = find_models()
     
     if not models:
-        print("No model files found (.pth, .pt)")
+        print("No model files found (.pth, .pt, .onnx)")
         return None
     
     print("\nAvailable models:")
     for i, model in enumerate(models):
-        print(f"  [{i+1}] {model}")
+        # Check if ONNX version exists
+        base_name = model.replace('.pth', '').replace('.pt', '').replace('.onnx', '')
+        onnx_exists = os.path.exists(base_name + '.onnx')
+        onnx_indicator = " [ONNX ✓]" if onnx_exists and not model.endswith('.onnx') else ""
+        print(f"  [{i+1}] {model}{onnx_indicator}")
     
     if len(models) == 1:
         print(f"\nUsing: {models[0]}")
@@ -947,13 +1077,61 @@ def select_model() -> str:
         try:
             choice = input(f"\nSelect model [1-{len(models)}] (default: 2): ").strip()
             if not choice:
-                return models[1]
+                if len(models) > 1:
+                    return models[1]
+                else:
+                    return models[0]
             idx = int(choice) - 1
             if 0 <= idx < len(models):
                 return models[idx]
         except ValueError:
             pass
         print("Invalid choice, try again.")
+
+
+def select_models_for_comparison() -> List[str]:
+    """Let user select multiple models for comparison"""
+    models = find_models()
+    
+    if not models:
+        print("No model files found (.pth, .pt, .onnx)")
+        return []
+    
+    print("\nAvailable models:")
+    for i, model in enumerate(models):
+        # Check if ONNX version exists
+        base_name = model.replace('.pth', '').replace('.pt', '').replace('.onnx', '')
+        onnx_exists = os.path.exists(base_name + '.onnx')
+        onnx_indicator = " [ONNX ✓]" if onnx_exists and not model.endswith('.onnx') else ""
+        print(f"  [{i+1}] {model}{onnx_indicator}")
+    
+    print("\nSelect models to compare (e.g., '1,2,3' or '1 2 3'):")
+    while True:
+        try:
+            choice = input("Models: ").strip()
+            if not choice:
+                return []
+            
+            # Parse input
+            indices = []
+            for part in choice.replace(',', ' ').split():
+                idx = int(part) - 1
+                if 0 <= idx < len(models):
+                    indices.append(idx)
+            
+            if len(indices) < 2:
+                print("Please select at least 2 models")
+                continue
+            
+            if len(indices) > 4:
+                print("Maximum 4 models allowed")
+                continue
+            
+            selected = [models[i] for i in indices]
+            print(f"\nSelected {len(selected)} models for comparison")
+            return selected
+        except ValueError:
+            print("Invalid input, try again.")
 
 
 # ============================================
@@ -965,11 +1143,36 @@ def main():
     print(f"{'='*65}")
     print(f"Device: {DEVICE}")
     
-    # Select model
-    model_path = select_model()
-    if not model_path:
-        return
+    # Select mode
+    print("\nSelect mode:")
+    print("  [1] Normal mode (single model)")
+    print("  [2] Comparison mode (multiple models - stacked display)")
+    print("  [3] Ensemble mode (multiple models - fusion prediction)")
     
+    mode = input("\nMode [1-3] (default: 1): ").strip()
+    
+    if mode == '2':
+        # Comparison mode
+        model_paths = select_models_for_comparison()
+        if not model_paths:
+            return
+        main_comparison(model_paths)
+    elif mode == '3':
+        # Ensemble mode
+        model_paths = select_models_for_comparison()
+        if not model_paths:
+            return
+        main_ensemble(model_paths)
+    else:
+        # Normal mode
+        model_path = select_model()
+        if not model_path:
+            return
+        main_single(model_path)
+
+
+def main_single(model_path: str):
+    """Normal mode with single model"""
     # Initialize classifier with auto-detection
     print("\n" + "-"*50)
     classifier = EmotionClassifier(model_path, DEVICE)
@@ -1159,6 +1362,531 @@ def main():
                 if new_model:
                     classifier = EmotionClassifier(new_model, DEVICE)
                     print(f"\nSwitched to: {new_model}")
+    
+    finally:
+        face_analyzer.close()
+        hand_recognizer.close()
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+def main_comparison(model_paths: List[str]):
+    """Comparison mode with multiple models on single screen with all features"""
+    num_models = len(model_paths)
+    
+    # Initialize all classifiers
+    classifiers = []
+    model_names = []
+    
+    print("\n" + "="*65)
+    print("Loading models for comparison...")
+    print("="*65)
+    
+    for i, model_path in enumerate(model_paths):
+        print(f"\n[{i+1}/{num_models}] Loading {model_path}...")
+        classifier = EmotionClassifier(model_path, DEVICE)
+        classifiers.append(classifier)
+        model_names.append(os.path.basename(model_path).replace('.pth', '').replace('.pt', ''))
+        print(f"  ✓ Loaded: {classifier.config.name}")
+    
+    print("\nInitializing face analyzer...")
+    face_analyzer = FacialAnalyzer()
+    print("  Face analyzer ready")
+    
+    print("Initializing hand recognizer...")
+    hand_recognizer = HandRecognizer()
+    print("  Hand recognizer ready")
+    
+    # Setup camera
+    cap = None
+    for idx in [0, 1, 2]:
+        cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            cap.set(cv2.CAP_PROP_FPS, 30)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            print(f"  Camera {idx} opened")
+            break
+        cap.release()
+    
+    if not cap or not cap.isOpened():
+        print("Error: No camera found")
+        return
+    
+    # Face detection
+    face_cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    
+    # State - same as normal mode
+    current_emoji = ""
+    show_emotions = False
+    show_features = False
+    show_hands = True
+    show_hand_points = False
+    fullscreen = False
+    window_name = 'Model Comparison - V4'
+    
+    # FPS counter
+    fps_counter = deque(maxlen=30)
+    last_time = time.perf_counter()
+    
+    print(f"\n{'='*65}")
+    print("Controls (same as normal mode):")
+    print("  'q' - Quit")
+    print("  's' - Copy emoji to clipboard")
+    print("  'e' - Toggle emotion bars")
+    print("  'f' - Toggle feature bars")
+    print("  'h' - Toggle hand visualization")
+    print("  'p' - Toggle hand points (landmarks)")
+    print("  'z' - Toggle fullscreen")
+    print(f"{'='*65}\n")
+    
+    # Create window
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # FPS calculation
+            current_time = time.perf_counter()
+            fps_counter.append(1.0 / (current_time - last_time + 1e-6))
+            last_time = current_time
+            fps = sum(fps_counter) / len(fps_counter)
+            
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            
+            # Draw info panel with model comparison info
+            panel_text = f"Comparing {num_models} models | FPS: {fps:.1f}"
+            cv2.rectangle(frame, (0, 0), (frame.shape[1], 35), (40, 40, 40), -1)
+            cv2.putText(frame, panel_text, (10, 22), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            
+            # Detect hands
+            hand_gesture, hand_data, hand_debug = hand_recognizer.detect(frame_rgb)
+            
+            if show_hands and hand_data:
+                frame = hand_recognizer.draw(frame, hand_data, show_points=show_hand_points)
+                
+                if show_hand_points and hand_debug["hands_detected"] > 0:
+                    info_text = f"Hands: {hand_debug['hands_detected']} | Conf: {hand_debug['confidence']:.0%}"
+                    cv2.putText(frame, info_text, (10, 60), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+            
+            if hand_gesture and hand_gesture in HAND_GESTURES:
+                h_emoji, h_desc = HAND_GESTURES[hand_gesture]
+                frame = draw_emoji(frame, h_emoji, (frame.shape[1] - 70, 40), 50)
+            
+            # Analyze facial features
+            features = face_analyzer.analyze(frame_rgb)
+            
+            # Detect faces
+            faces = face_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
+            
+            # Process each face with ALL models
+            for (x, y, w, h) in faces:
+                # Extract face with margin
+                margin = int(0.1 * min(w, h))
+                y1, y2 = max(0, y - margin), min(frame.shape[0], y + h + margin)
+                x1, x2 = max(0, x - margin), min(frame.shape[1], x + w + margin)
+                
+                # Predictions from all models
+                predictions = []
+                for classifier, model_name in zip(classifiers, model_names):
+                    # Use appropriate format for model
+                    if classifier.in_channels == 3:
+                        face_roi = frame_rgb[y1:y2, x1:x2]
+                    else:
+                        face_roi = frame[y1:y2, x1:x2]
+                    
+                    # Predict emotion
+                    start = time.perf_counter()
+                    emotion, confidence, probs = classifier.predict(face_roi)
+                    inference_time = (time.perf_counter() - start) * 1000
+                    
+                    # Get emoji
+                    emoji, description = get_emoji(emotion, features, confidence, hand_gesture)
+                    color = EMOTION_COLORS.get(emotion, (128, 128, 128))
+                    
+                    predictions.append({
+                        'model_name': model_name,
+                        'emotion': emotion,
+                        'description': description,
+                        'confidence': confidence,
+                        'emoji': emoji,
+                        'color': color,
+                        'probs': probs,
+                        'inference_time': inference_time,
+                        'classifier': classifier
+                    })
+                
+                # Use first model's emoji as main emoji
+                current_emoji = predictions[0]['emoji']
+                main_color = predictions[0]['color']
+                
+                # Draw face rectangle with main color
+                cv2.rectangle(frame, (x, y+35), (x+w, y+h+35), main_color, 2)
+                
+                # Draw labels for each model (stacked vertically)
+                label_y_offset = 0
+                for i, pred in enumerate(predictions):
+                    label = f"{pred['model_name'][:8]}: {pred['description']} {pred['confidence']*100:.0f}% ({pred['inference_time']:.1f}ms)"
+                    
+                    # Smaller font for multiple models
+                    font_scale = 0.4 if num_models > 2 else 0.5
+                    thickness = 1
+                    
+                    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                    
+                    # Background for label
+                    label_y = y + 35 - 22 - label_y_offset
+                    cv2.rectangle(frame, (x, label_y), (x+tw+8, label_y+th+4), pred['color'], -1)
+                    cv2.putText(frame, label, (x+4, label_y+th), 
+                               cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255,255,255), thickness)
+                    
+                    label_y_offset += th + 6
+                
+                # Draw main emoji (from first model)
+                frame = draw_emoji(frame, current_emoji, (x - 90, y+35), 80)
+                
+                # Optional displays (using first model's data)
+                if show_emotions:
+                    # Show comparison of all models' predictions
+                    bar_x = x
+                    bar_y = y + 35
+                    bar_spacing = 120 if num_models <= 2 else 80
+                    
+                    for i, pred in enumerate(predictions):
+                        draw_bars(frame, pred['probs'], pred['classifier'].config.emotions, 
+                                 bar_x + i * bar_spacing, bar_y, min(bar_spacing - 10, w // num_models))
+                
+                if show_features:
+                    draw_features(frame, features, 10, frame.shape[0] - 100)
+            
+            # Draw button bar at bottom
+            frame = draw_button_bar(frame, {
+                'E': ('Emotions', show_emotions),
+                'F': ('Features', show_features),
+                'H': ('Hands', show_hands),
+                'P': ('Points', show_hand_points),
+                'Z': ('Fullscreen', fullscreen),
+                'S': ('Copy', False),
+                'Q': ('Quit', False)
+            })
+            
+            cv2.imshow(window_name, frame)
+            
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+            elif key == ord('s') and current_emoji:
+                pyperclip.copy(current_emoji)
+                print(f"Copied: {current_emoji}")
+            elif key == ord('e'):
+                show_emotions = not show_emotions
+            elif key == ord('f'):
+                show_features = not show_features
+            elif key == ord('h'):
+                show_hands = not show_hands
+            elif key == ord('p'):
+                show_hand_points = not show_hand_points
+                print(f"Hand points: {'ON' if show_hand_points else 'OFF'}")
+            elif key == ord('z'):
+                fullscreen = not fullscreen
+                if fullscreen:
+                    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                else:
+                    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
+                print(f"Fullscreen: {'ON' if fullscreen else 'OFF'}")
+    
+    finally:
+        face_analyzer.close()
+        hand_recognizer.close()
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+def main_ensemble(model_paths: List[str]):
+    """Ensemble mode - Fuse multiple models into single prediction"""
+    num_models = len(model_paths)
+    
+    # Initialize all classifiers
+    classifiers = []
+    model_names = []
+    
+    print("\n" + "="*65)
+    print("Loading models for ensemble...")
+    print("="*65)
+    
+    for i, model_path in enumerate(model_paths):
+        print(f"\n[{i+1}/{num_models}] Loading {model_path}...")
+        classifier = EmotionClassifier(model_path, DEVICE)
+        classifiers.append(classifier)
+        model_names.append(os.path.basename(model_path).replace('.pth', '').replace('.pt', ''))
+        print(f"  ✓ Loaded: {classifier.config.name}")
+    
+    print("\nInitializing face analyzer...")
+    face_analyzer = FacialAnalyzer()
+    print("  Face analyzer ready")
+    
+    print("Initializing hand recognizer...")
+    hand_recognizer = HandRecognizer()
+    print("  Hand recognizer ready")
+    
+    # Setup camera
+    cap = None
+    for idx in [0, 1, 2]:
+        cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            cap.set(cv2.CAP_PROP_FPS, 30)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            print(f"  Camera {idx} opened")
+            break
+        cap.release()
+    
+    if not cap or not cap.isOpened():
+        print("Error: No camera found")
+        return
+    
+    # Face detection
+    face_cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    
+    # State
+    current_emoji = ""
+    show_emotions = False
+    show_features = False
+    show_hands = True
+    show_hand_points = False
+    show_consensus = True  # Show model agreement
+    fullscreen = False
+    fusion_method = 'weighted'  # 'weighted', 'voting', 'average'
+    window_name = 'Ensemble Mode - V4'
+    
+    # FPS counter
+    fps_counter = deque(maxlen=30)
+    last_time = time.perf_counter()
+    
+    print(f"\n{'='*65}")
+    print("Controls:")
+    print("  'q' - Quit")
+    print("  's' - Copy emoji to clipboard")
+    print("  'e' - Toggle emotion bars")
+    print("  'f' - Toggle feature bars")
+    print("  'h' - Toggle hand visualization")
+    print("  'p' - Toggle hand points")
+    print("  'c' - Toggle consensus display")
+    print("  'm' - Change fusion method (weighted/voting/average)")
+    print("  'z' - Toggle fullscreen")
+    print(f"{'='*65}\n")
+    
+    # Create window
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # FPS calculation
+            current_time = time.perf_counter()
+            fps_counter.append(1.0 / (current_time - last_time + 1e-6))
+            last_time = current_time
+            fps = sum(fps_counter) / len(fps_counter)
+            
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            
+            # Draw info panel with ensemble info
+            panel_text = f"Ensemble ({num_models} models) | Method: {fusion_method} | FPS: {fps:.1f}"
+            cv2.rectangle(frame, (0, 0), (frame.shape[1], 35), (40, 40, 40), -1)
+            cv2.putText(frame, panel_text, (10, 22), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            
+            # Detect hands
+            hand_gesture, hand_data, hand_debug = hand_recognizer.detect(frame_rgb)
+            
+            if show_hands and hand_data:
+                frame = hand_recognizer.draw(frame, hand_data, show_points=show_hand_points)
+                
+                if show_hand_points and hand_debug["hands_detected"] > 0:
+                    info_text = f"Hands: {hand_debug['hands_detected']} | Conf: {hand_debug['confidence']:.0%}"
+                    cv2.putText(frame, info_text, (10, 60), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+            
+            if hand_gesture and hand_gesture in HAND_GESTURES:
+                h_emoji, h_desc = HAND_GESTURES[hand_gesture]
+                frame = draw_emoji(frame, h_emoji, (frame.shape[1] - 70, 40), 50)
+            
+            # Analyze facial features
+            features = face_analyzer.analyze(frame_rgb)
+            
+            # Detect faces
+            faces = face_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
+            
+            # Process each face with ensemble
+            for (x, y, w, h) in faces:
+                # Extract face with margin
+                margin = int(0.1 * min(w, h))
+                y1, y2 = max(0, y - margin), min(frame.shape[0], y + h + margin)
+                x1, x2 = max(0, x - margin), min(frame.shape[1], x + w + margin)
+                
+                # Collect predictions from all models
+                all_predictions = []
+                all_probs = []
+                inference_times = []
+                
+                for classifier in classifiers:
+                    # Use appropriate format for model
+                    if classifier.in_channels == 3:
+                        face_roi = frame_rgb[y1:y2, x1:x2]
+                    else:
+                        face_roi = frame[y1:y2, x1:x2]
+                    
+                    # Predict emotion
+                    start = time.perf_counter()
+                    emotion, confidence, probs = classifier.predict(face_roi)
+                    inference_times.append((time.perf_counter() - start) * 1000)
+                    
+                    all_predictions.append(emotion)
+                    all_probs.append(probs)
+                
+                # FUSION: Combine predictions
+                if fusion_method == 'weighted':
+                    # Weighted average by confidence
+                    weights = np.array([np.max(p) for p in all_probs])
+                    weights = weights / weights.sum()
+                    
+                    # Average probabilities weighted by confidence
+                    ensemble_probs = np.zeros_like(all_probs[0])
+                    for prob, weight in zip(all_probs, weights):
+                        ensemble_probs += prob * weight
+                    
+                    final_emotion_idx = np.argmax(ensemble_probs)
+                    final_confidence = ensemble_probs[final_emotion_idx]
+                    
+                elif fusion_method == 'voting':
+                    # Majority voting
+                    from collections import Counter
+                    vote_counts = Counter(all_predictions)
+                    final_emotion = vote_counts.most_common(1)[0][0]
+                    
+                    # Get average prob for voted emotion
+                    final_emotion_idx = list(classifiers[0].config.emotions.values()).index(final_emotion)
+                    ensemble_probs = np.mean(all_probs, axis=0)
+                    final_confidence = ensemble_probs[final_emotion_idx]
+                    
+                else:  # 'average'
+                    # Simple average of probabilities
+                    ensemble_probs = np.mean(all_probs, axis=0)
+                    final_emotion_idx = np.argmax(ensemble_probs)
+                    final_confidence = ensemble_probs[final_emotion_idx]
+                
+                # Get final emotion name
+                final_emotion = classifiers[0].config.emotions[final_emotion_idx]
+                
+                # Calculate consensus (agreement between models)
+                consensus_count = sum(1 for pred in all_predictions if pred == final_emotion)
+                consensus_pct = consensus_count / num_models
+                
+                # Get emoji
+                emoji, description = get_emoji(final_emotion, features, final_confidence, hand_gesture)
+                current_emoji = emoji
+                color = EMOTION_COLORS.get(final_emotion, (128, 128, 128))
+                
+                # Adjust color based on consensus
+                if consensus_pct < 0.5:
+                    # Low consensus - yellowish
+                    color = (color[0]//2 + 128, color[1]//2 + 128, color[2]//2)
+                
+                # Draw face rectangle
+                cv2.rectangle(frame, (x, y+35), (x+w, y+h+35), color, 2)
+                
+                # Draw main label with ensemble info
+                avg_time = np.mean(inference_times)
+                label = f"Ensemble: {description} {final_confidence*100:.0f}% ({avg_time:.1f}ms)"
+                
+                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+                cv2.rectangle(frame, (x, y+35-22), (x+tw+8, y+35), color, -1)
+                cv2.putText(frame, label, (x+4, y+35-6), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 2)
+                
+                # Show consensus info
+                if show_consensus:
+                    consensus_label = f"Agreement: {consensus_count}/{num_models} ({consensus_pct*100:.0f}%)"
+                    consensus_color = (0, 255, 0) if consensus_pct >= 0.7 else (0, 255, 255) if consensus_pct >= 0.5 else (0, 165, 255)
+                    cv2.putText(frame, consensus_label, (x, y+h+55), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, consensus_color, 1)
+                    
+                    # Show individual model predictions (compact)
+                    models_text = " | ".join([f"{name[:4]}:{pred[:3]}" for name, pred in zip(model_names, all_predictions)])
+                    cv2.putText(frame, models_text, (x, y+h+70), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.35, (200, 200, 200), 1)
+                
+                # Draw emoji
+                frame = draw_emoji(frame, emoji, (x - 90, y+35), 80)
+                
+                # Optional displays
+                if show_emotions:
+                    draw_bars(frame, ensemble_probs, classifiers[0].config.emotions, x, y+35, w)
+                
+                if show_features:
+                    draw_features(frame, features, 10, frame.shape[0] - 100)
+            
+            # Draw button bar at bottom
+            frame = draw_button_bar(frame, {
+                'E': ('Emotions', show_emotions),
+                'F': ('Features', show_features),
+                'H': ('Hands', show_hands),
+                'P': ('Points', show_hand_points),
+                'C': ('Consensus', show_consensus),
+                'M': (f'Method:{fusion_method[:3]}', False),
+                'Z': ('Fullscreen', fullscreen),
+                'S': ('Copy', False),
+                'Q': ('Quit', False)
+            })
+            
+            cv2.imshow(window_name, frame)
+            
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+            elif key == ord('s') and current_emoji:
+                pyperclip.copy(current_emoji)
+                print(f"Copied: {current_emoji}")
+            elif key == ord('e'):
+                show_emotions = not show_emotions
+            elif key == ord('f'):
+                show_features = not show_features
+            elif key == ord('h'):
+                show_hands = not show_hands
+            elif key == ord('p'):
+                show_hand_points = not show_hand_points
+                print(f"Hand points: {'ON' if show_hand_points else 'OFF'}")
+            elif key == ord('c'):
+                show_consensus = not show_consensus
+                print(f"Consensus display: {'ON' if show_consensus else 'OFF'}")
+            elif key == ord('m'):
+                # Cycle through fusion methods
+                methods = ['weighted', 'voting', 'average']
+                current_idx = methods.index(fusion_method)
+                fusion_method = methods[(current_idx + 1) % len(methods)]
+                print(f"Fusion method: {fusion_method}")
+            elif key == ord('z'):
+                fullscreen = not fullscreen
+                if fullscreen:
+                    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                else:
+                    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
+                print(f"Fullscreen: {'ON' if fullscreen else 'OFF'}")
     
     finally:
         face_analyzer.close()
