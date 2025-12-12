@@ -1032,23 +1032,29 @@ def draw_button_bar(frame, buttons: Dict[str, Tuple[str, bool]]):
 # MODEL SELECTION
 # ============================================
 def find_models() -> List[str]:
-    """Find available model files (.pth, .pt, .onnx)"""
+    """Find available model files (.pth, .pt, .onnx) in Training folder"""
     models = []
     current_dir = os.path.dirname(os.path.abspath(__file__))
+    models_dir = os.path.join(current_dir, 'Training')
     
-    for file in os.listdir(current_dir):
+    if not os.path.exists(models_dir):
+        print(f"Warning: 'Training' directory not found at {models_dir}")
+        return []
+    
+    for file in os.listdir(models_dir):
         if file.endswith(('.pth', '.pt', '.onnx')):
             # Prefer .pth/.pt files (ONNX loaded automatically)
             base_name = file.replace('.onnx', '').replace('.pth', '').replace('.pt', '')
-            pth_exists = os.path.exists(os.path.join(current_dir, base_name + '.pth')) or \
-                         os.path.exists(os.path.join(current_dir, base_name + '.pt'))
+            pth_exists = os.path.exists(os.path.join(models_dir, base_name + '.pth')) or \
+                         os.path.exists(os.path.join(models_dir, base_name + '.pt'))
             
             # If ONNX available and Runtime installed, prefer PyTorch files (ONNX loaded automatically)
             # This way user selects .pth and gets .onnx speedup automatically
             if file.endswith('.onnx') and pth_exists:
                 continue  # Skip .onnx in list, will be loaded automatically from .pth
             
-            models.append(file)
+            # Return full path with Training folder
+            models.append(os.path.join('Training', file))
     
     return sorted(models)
 
@@ -1058,14 +1064,15 @@ def select_model() -> str:
     models = find_models()
     
     if not models:
-        print("No model files found (.pth, .pt, .onnx)")
+        print("No model files found in Training folder (.pth, .pt, .onnx)")
         return None
     
     print("\nAvailable models:")
     for i, model in enumerate(models):
         # Check if ONNX version exists
-        base_name = model.replace('.pth', '').replace('.pt', '').replace('.onnx', '')
-        onnx_exists = os.path.exists(base_name + '.onnx')
+        base_name = model.replace('Training\\', '').replace('Training/', '').replace('.pth', '').replace('.pt', '').replace('.onnx', '')
+        onnx_path = os.path.join('Training', base_name + '.onnx')
+        onnx_exists = os.path.exists(onnx_path)
         onnx_indicator = " [ONNX ✓]" if onnx_exists and not model.endswith('.onnx') else ""
         print(f"  [{i+1}] {model}{onnx_indicator}")
     
@@ -1094,14 +1101,15 @@ def select_models_for_comparison() -> List[str]:
     models = find_models()
     
     if not models:
-        print("No model files found (.pth, .pt, .onnx)")
+        print("No model files found in Training folder (.pth, .pt, .onnx)")
         return []
     
     print("\nAvailable models:")
     for i, model in enumerate(models):
         # Check if ONNX version exists
-        base_name = model.replace('.pth', '').replace('.pt', '').replace('.onnx', '')
-        onnx_exists = os.path.exists(base_name + '.onnx')
+        base_name = model.replace('Training\\', '').replace('Training/', '').replace('.pth', '').replace('.pt', '').replace('.onnx', '')
+        onnx_path = os.path.join('Training', base_name + '.onnx')
+        onnx_exists = os.path.exists(onnx_path)
         onnx_indicator = " [ONNX ✓]" if onnx_exists and not model.endswith('.onnx') else ""
         print(f"  [{i+1}] {model}{onnx_indicator}")
     
