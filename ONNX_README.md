@@ -1,46 +1,42 @@
-# 🚀 ONNX Runtime Integration - Guide Complet
+# ONNX Runtime Integration
 
-## 📋 Qu'est-ce que ONNX ?
+## Overview
 
-**ONNX (Open Neural Network Exchange)** est un format universel pour les modèles de deep learning qui permet d'**optimiser l'inférence** sans réentraîner les modèles.
+ONNX (Open Neural Network Exchange) is a universal format for deep learning models enabling optimized inference without retraining.
 
-### ✅ Avantages ONNX :
-- **2-3x plus rapide** en inférence vs PyTorch
-- Compatible **CPU/GPU/mobile**
-- **Même précision** (pas de perte de performance)
-- Optimisations automatiques (fusion d'opérations, graph optimization)
-- Support NVIDIA TensorRT pour GPU
+### Key Benefits
+- 2-3x faster inference vs PyTorch
+- CPU/GPU/mobile compatible
+- Same accuracy, no performance loss
+- Automatic optimizations (operation fusion, graph optimization)
+- NVIDIA TensorRT support
 
 ---
 
-## 🔧 Installation
+## Installation
 
-### Étape 1 : Installer ONNX Runtime
+### Step 1: Install ONNX Runtime
 
 ```bash
-# Pour GPU NVIDIA (recommandé si CUDA disponible)
+# For NVIDIA GPU (recommended if CUDA available)
 pip install onnxruntime-gpu
 
-# OU pour CPU seulement
+# OR CPU only
 pip install onnxruntime
 
-# Optionnel : pour valider les exports
+# Optional: validate exports
 pip install onnx
 ```
 
-### Étape 2 : Exporter vos modèles PyTorch vers ONNX
+### Step 2: Export PyTorch Models to ONNX
 
 ```bash
 python export_to_onnx.py
 ```
 
-**Ce que ça fait :**
-- Scanne tous les fichiers `.pth` et `.pt`
-- Crée des fichiers `.onnx` optimisés à côté
-- Exemple : `emotion_model_best.pth` → `emotion_model_best.onnx`
-- **Pas de réentraînement** : simple conversion !
+Scans all `.pth` and `.pt` files, creates optimized `.onnx` files. Simple conversion, no retraining required.
 
-**Output attendu :**
+**Expected output:**
 ```
 ======================================================================
 PyTorch to ONNX Model Exporter
@@ -87,105 +83,104 @@ Next steps:
 
 ---
 
-## 🎯 Utilisation
+## Usage
 
-### Mode automatique (recommandé)
+### Automatic Mode
 
-L'application **détecte automatiquement** les modèles ONNX et les utilise s'ils existent :
+Application automatically detects and uses ONNX models when available:
 
 ```bash
 python app_v4.py
 ```
 
-**Workflow :**
-1. Vous sélectionnez `emotion_model_best.pth`
-2. L'app détecte `emotion_model_best.onnx` et l'utilise automatiquement
-3. Vous voyez **[ONNX]** dans l'interface → inference optimisée ! 🚀
+**Workflow:**
+1. Select `emotion_model_best.pth`
+2. App detects and loads `emotion_model_best.onnx` automatically
+3. UI displays `[ONNX]` indicator for optimized inference
 
-**Indicateurs visuels :**
-- **Panneau supérieur** : `Model: FER+ (Enhanced Labels) [ONNX]`
-- **Inference time** : ~5-8ms avec ONNX vs ~15-20ms avec PyTorch
+**Visual indicators:**
+- Top panel: `Model: FER+ (Enhanced Labels) [ONNX]`
+- Inference time: ~5-8ms (ONNX) vs ~15-20ms (PyTorch)
 
 ---
 
-## 📊 Comparaison Performance
+## Performance Comparison
 
-### Avant ONNX (PyTorch)
+### Before (PyTorch)
 ```
 Inference: 18.3ms | FPS: 28.5
 Device: GPU
 ```
 
-### Après ONNX
+### After (ONNX)
 ```
 Inference: 6.8ms | FPS: 54.2
 Device: GPU
-Model: FER+ [ONNX] ✓
+Model: FER+ [ONNX]
 Provider: CUDAExecutionProvider
 ```
 
-**Gain : ~2.7x plus rapide !** 🔥
+**Speedup: ~2.7x faster**
 
 ---
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
-### Problème 1 : ONNX Runtime pas installé
+### Issue 1: ONNX Runtime Not Installed
 ```
-⚠ Install ONNX Runtime: pip install onnxruntime-gpu
+Install ONNX Runtime: pip install onnxruntime-gpu
 ```
-**Solution :** `pip install onnxruntime-gpu` ou `pip install onnxruntime`
+**Fix:** `pip install onnxruntime-gpu` or `pip install onnxruntime`
 
-### Problème 2 : ONNX loading failed
+### Issue 2: ONNX Loading Failed
 ```
-⚠ ONNX loading failed, falling back to PyTorch: ...
+ONNX loading failed, falling back to PyTorch
 ```
-**Cause :** Fichier `.onnx` corrompu ou incompatible
-**Solution :** Ré-exporter avec `python export_to_onnx.py`
+**Cause:** Corrupted or incompatible `.onnx` file
+**Fix:** Re-export with `python export_to_onnx.py`
 
-### Problème 3 : GPU pas détecté avec ONNX
+### Issue 3: GPU Not Detected
 ```
 Provider: CPUExecutionProvider
 ```
-**Cause :** `onnxruntime-gpu` pas installé ou CUDA non détecté
-**Solution :** 
-1. Vérifier CUDA : `nvidia-smi`
-2. Installer GPU version : `pip uninstall onnxruntime && pip install onnxruntime-gpu`
+**Cause:** `onnxruntime-gpu` not installed or CUDA not detected
+**Fix:** 
+1. Verify CUDA: `nvidia-smi`
+2. Install GPU version: `pip uninstall onnxruntime && pip install onnxruntime-gpu`
 
-### Problème 4 : Fichier .onnx pas trouvé
+### Issue 4: .onnx File Not Found
 ```
 Loading model from: emotion_model_best.pth
 ```
-(Pas de message ONNX)
-**Cause :** Fichier `.onnx` n'existe pas
-**Solution :** Exporter avec `python export_to_onnx.py`
+**Cause:** `.onnx` file doesn't exist
+**Fix:** Export with `python export_to_onnx.py`
 
 ---
 
-## 🔍 Vérification
+## Verification
 
-### Vérifier que ONNX fonctionne :
+### Check ONNX Status:
 
-1. **Lancez l'app :**
+1. **Run application:**
    ```bash
    python app_v4.py
    ```
 
-2. **Cherchez ces messages au démarrage :**
+2. **Startup messages:**
    ```
    Loading ONNX model from: emotion_model_best.onnx
-     ✓ ONNX Runtime loaded (optimized inference)
-     Provider: CUDAExecutionProvider
-     Detected dataset: FER+ (Enhanced Labels)
+   ONNX Runtime loaded (optimized inference)
+   Provider: CUDAExecutionProvider
+   Detected dataset: FER+ (Enhanced Labels)
    ```
 
-3. **Dans l'interface, vérifiez :**
-   - Panneau supérieur : `Model: FER+ [ONNX]`
-   - Inference time : < 10ms (GPU) ou < 20ms (CPU)
+3. **UI indicators:**
+   - Top panel: `Model: FER+ [ONNX]`
+   - Inference time: < 10ms (GPU) or < 20ms (CPU)
 
 ---
 
-## 📈 Benchmarks
+## Benchmarks
 
 ### GPU (NVIDIA RTX 4050)
 | Model Format | Inference Time | FPS | Speedup |
@@ -201,83 +196,81 @@ Loading model from: emotion_model_best.pth
 
 ---
 
-## ⚙️ Options Avancées
+## Advanced Options
 
-### Forcer PyTorch (désactiver ONNX)
-Si vous voulez forcer PyTorch pour debugging :
+### Force PyTorch (Disable ONNX)
+For debugging:
 
-1. Renommez `.onnx` temporairement :
+1. Temporarily rename `.onnx`:
    ```bash
    ren emotion_model_best.onnx emotion_model_best.onnx.bak
    ```
 
-2. Ou désinstallez ONNX Runtime :
+2. Or uninstall ONNX Runtime:
    ```bash
    pip uninstall onnxruntime onnxruntime-gpu
    ```
 
-### Export avec options custom
+### Custom Export Options
 
-Modifiez `export_to_onnx.py` ligne 68 pour changer l'opset ou optimizations :
+Modify `export_to_onnx.py` line 68 for opset or optimization changes:
 
 ```python
 torch.onnx.export(
     model,
     dummy_input,
     onnx_path,
-    opset_version=14,        # Changez pour compatibilité
-    do_constant_folding=True, # Optimisations
-    # ... autres options
+    opset_version=14,        # adjust for compatibility
+    do_constant_folding=True, # optimizations
+    # other options
 )
 ```
 
 ---
 
-## 🎓 Concepts Techniques
+## Technical Details
 
-### Qu'est-ce qui rend ONNX plus rapide ?
+### Why ONNX is Faster
 
-1. **Graph Optimization** : Fusion d'opérations séquentielles
-2. **Quantization** : Utilise FP16 au lieu de FP32 quand possible
-3. **Kernel Optimization** : Code optimisé pour chaque CPU/GPU
-4. **Memory Layout** : Organisation mémoire plus efficace
-5. **Operator Fusion** : Conv + BatchNorm + ReLU fusionnés en une seule op
+1. **Graph Optimization**: Sequential operation fusion
+2. **Quantization**: FP16 instead of FP32 when possible
+3. **Kernel Optimization**: Optimized code per CPU/GPU
+4. **Memory Layout**: Efficient memory organization
+5. **Operator Fusion**: Conv + BatchNorm + ReLU fused into single op
 
-### Compatibilité
+### Compatibility
 
-- ✅ **Windows** : CPU + GPU (CUDA)
-- ✅ **Linux** : CPU + GPU (CUDA)
-- ✅ **macOS** : CPU seulement
-- ✅ **Mobile** : Android/iOS (avec ONNX Runtime Mobile)
-
----
-
-## 📝 Notes Importantes
-
-1. **Accuracy identique** : ONNX utilise les mêmes poids que PyTorch
-2. **Pas de réentraînement** : Simple conversion du modèle existant
-3. **Fichiers conservés** : `.pth` et `.onnx` coexistent, sélectionnez `.pth` dans l'app
-4. **Fallback automatique** : Si ONNX échoue, PyTorch prend le relais
-5. **Multi-model support** : Fonctionne avec Mode 2 (Comparison) et Mode 3 (Ensemble)
+- **Windows**: CPU + GPU (CUDA)
+- **Linux**: CPU + GPU (CUDA)
+- **macOS**: CPU only
+- **Mobile**: Android/iOS (ONNX Runtime Mobile)
 
 ---
 
-## 🚀 Résumé Rapide
+## Important Notes
+
+1. **Same accuracy**: ONNX uses identical weights as PyTorch
+2. **No retraining**: Simple model conversion
+3. **Files preserved**: `.pth` and `.onnx` coexist, select `.pth` in app
+4. **Automatic fallback**: PyTorch used if ONNX fails
+5. **Multi-model support**: Works with Mode 2 (Comparison) and Mode 3 (Ensemble)
+
+---
+
+## Quick Start
 
 ```bash
-# 1. Installer ONNX Runtime
+# Install ONNX Runtime
 pip install onnxruntime-gpu
 
-# 2. Exporter modèles
+# Export models
 python export_to_onnx.py
 
-# 3. Lancer l'app (détection auto)
+# Run app (auto-detection)
 python app_v4.py
-
-# ✓ C'est tout ! Profitez de la vitesse 2-3x 🔥
 ```
 
-**Avant :** 18ms inference → 28 FPS
-**Après :** 7ms inference → 54 FPS
+**Before:** 18ms inference → 28 FPS
+**After:** 7ms inference → 54 FPS
 
-**Gain : 2.7x plus rapide, même précision ! 🎯**
+**Result: 2.7x faster, same accuracy**
