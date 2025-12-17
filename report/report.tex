@@ -159,9 +159,40 @@ Throughout the project, we continuously refined our training approach. Key impro
     \item \textbf{Augmentation strategies}: Implementation of Mixup and advanced geometric transformations
     \item \textbf{Training optimizations}: OneCycleLR scheduling, mixed-precision training, and gradient accumulation
     \item \textbf{Multi-dataset training}: Combined training on AffectNet and FER+ for improved generalization
+    \item \textbf{Multi-model ensemble}: Exploration of model comparison and fusion strategies to overcome dataset limitations
 \end{enumerate}
 
 These refinements are documented in our training notebook and are detailed in Section~\ref{sec:training}.
+
+\subsubsection{Addressing Dataset Limitations Through Multi-Model Approaches}
+
+Despite incorporating multiple datasets, we recognized that each dataset carries inherent biases and limitations: label noise, limited subject diversity, class imbalance, and varying image quality. Rather than solely relying on data augmentation or naive dataset merging, we explored \textbf{multi-model strategies} as an alternative approach to improve prediction robustness.
+
+The key insight was that models trained on different datasets learn complementary representations:
+\begin{itemize}[noitemsep]
+    \item \textbf{FER+-trained models}: Excel at recognizing expressions in grayscale, low-resolution contexts typical of webcam footage, benefiting from crowd-sourced probabilistic labels.
+    \item \textbf{AffectNet-trained models}: Capture color-dependent cues and fine-grained details from higher-resolution RGB images with more diverse subjects.
+\end{itemize}
+
+This observation led us to develop two complementary tools:
+
+\paragraph{Model Comparison Mode.} We implemented a real-time comparison system (\texttt{compare\_models.py}) that runs multiple models in parallel on the same video feed, displaying their predictions side-by-side. This allowed us to:
+\begin{itemize}[noitemsep]
+    \item Identify systematic differences in model behavior across emotions
+    \item Discover expression-specific strengths (e.g., one model excelling at ``surprise'' while another better detects ``contempt'')
+    \item Understand how input format (grayscale vs RGB) influences predictions
+\end{itemize}
+
+\paragraph{Ensemble Prediction Mode.} Building on these insights, we implemented ensemble inference that combines predictions from multiple models using configurable fusion strategies:
+\begin{itemize}[noitemsep]
+    \item \textbf{Weighted averaging}: Models with higher confidence contribute more to the final prediction
+    \item \textbf{Majority voting}: Each model votes, and the most common prediction wins
+    \item \textbf{Simple averaging}: Equal contribution from all models
+\end{itemize}
+
+A key addition was the \textbf{consensus metric}, which measures agreement among models. When models disagree (low consensus), it often indicates genuinely ambiguous expressions---providing users with valuable uncertainty information beyond raw confidence scores.
+
+This multi-model exploration proved valuable not only for improving prediction quality but also for understanding the complementary nature of different training datasets. Technical details of the implementation are provided in Section~\ref{sec:ensemble}.
 
 \subsection{Application Development}
 
@@ -377,6 +408,18 @@ The \texttt{CombinedEmotionDataset} class enables training on multiple datasets 
 
 Note: FER2013 and FER+ share the same images with different labels; they should not be combined to avoid duplication.
 
+\subsubsection{Overcoming Dataset Limitations: Multi-Model Strategies}
+
+Due to the inherent limitations of individual emotion recognition datasets---notably label noise, limited image diversity, and class imbalance---we explored alternative strategies to improve prediction robustness. Rather than solely relying on dataset stacking, we investigated \textbf{multi-model approaches} that leverage the complementary strengths of models trained on different datasets.
+
+This exploration was motivated by the observation that each dataset captures different aspects of emotional expression:
+\begin{itemize}[noitemsep]
+    \item \textbf{FER+}: Crowd-sourced annotations providing probabilistic labels that better capture ambiguous expressions
+    \item \textbf{AffectNet}: Higher resolution RGB images with more diverse subjects and lighting conditions
+\end{itemize}
+
+By training separate models on each dataset and combining their predictions at inference time, we can potentially achieve better generalization than a single model trained on merged data, while avoiding issues like duplicated images or conflicting label schemes.
+
 \subsection{Real-Time Application}
 \label{sec:application}
 
@@ -424,12 +467,67 @@ Using MediaPipe Hands, we detect and classify 11 gestures:
 
 \subsubsection{Multi-Model Modes}
 
-The application supports three operational modes:
+The application supports three operational modes (detailed in Section~\ref{sec:ensemble}):
 \begin{enumerate}
-    \item \textbf{Single model}: Standard operation with one model
-    \item \textbf{Comparison mode}: Side-by-side comparison of multiple models
-    \item \textbf{Ensemble mode}: Fusion of predictions from multiple models using weighted averaging, voting, or simple averaging
+    \item \textbf{Single model}: Standard operation with one model for maximum performance.
+    \item \textbf{Comparison mode}: Side-by-side comparison of multiple models on the same frame, allowing visual analysis of model behavior and identification of disagreements.
+    \item \textbf{Ensemble mode}: Fusion of predictions from multiple models using configurable strategies (weighted averaging, voting, or simple averaging), with real-time consensus visualization.
 \end{enumerate}
+
+These modes enable both development-time analysis (understanding model differences) and deployment-time robustness (combining model strengths).
+
+\subsection{Model Comparison and Ensemble Strategies}
+\label{sec:ensemble}
+
+This section provides the technical details of our multi-model implementation, building on the motivation described in Section~2.3.
+
+\subsubsection{Comparison Mode Implementation}
+
+The \texttt{ModelComparator} class handles automatic model detection, loading, and preprocessing for different architectures:
+
+\begin{lstlisting}[language=Python]
+# Automatic architecture detection from checkpoint
+in_channels = state_dict['conv1a.weight'].shape[1]
+num_classes = state_dict['fc3.weight'].shape[0]
+\end{lstlisting}
+
+Each model receives appropriately preprocessed input (grayscale vs RGB, different resolutions), and predictions are displayed in real-time with individual inference times.
+
+\subsubsection{Ensemble Fusion Strategies}
+
+We implemented three fusion strategies with the following mathematical formulations:
+
+\begin{enumerate}
+    \item \textbf{Weighted Average}: Probabilities weighted by model confidence:
+    \begin{equation}
+        P_{\text{ensemble}} = \sum_{i=1}^{N} w_i \cdot P_i, \quad \text{where } w_i = \frac{\max(P_i)}{\sum_j \max(P_j)}
+    \end{equation}
+    
+    \item \textbf{Majority Voting}: Most common prediction selected:
+    \begin{equation}
+        \hat{y}_{\text{ensemble}} = \arg\max_c \sum_{i=1}^{N} \mathbb{1}[\hat{y}_i = c]
+    \end{equation}
+    
+    \item \textbf{Simple Average}: Equal-weight probability averaging:
+    \begin{equation}
+        P_{\text{ensemble}} = \frac{1}{N} \sum_{i=1}^{N} P_i
+    \end{equation}
+\end{enumerate}
+
+\subsubsection{Consensus Metric}
+
+The consensus metric quantifies model agreement:
+
+\begin{equation}
+    \text{Consensus} = \frac{|\{i : \hat{y}_i = \hat{y}_{\text{ensemble}}\}|}{N}
+\end{equation}
+
+The application visualizes consensus through color-coded indicators:
+\begin{itemize}[noitemsep]
+    \item \textbf{Green}: High agreement ($\geq 70\%$)
+    \item \textbf{Yellow}: Moderate agreement ($50-70\%$)
+    \item \textbf{Orange}: Low agreement ($< 50\%$)
+\end{itemize}
 
 \subsection{ONNX Export and Optimization}
 \label{sec:onnx}
