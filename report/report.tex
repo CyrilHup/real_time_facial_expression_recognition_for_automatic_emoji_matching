@@ -1,1069 +1,653 @@
-% chktex-file 8
-% chktex-file 18
-% chktex-file 26
-\documentclass[12pt,a4paper]{article}
+\documentclass[11pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage[english]{babel}
-\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{geometry}
 \usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
 \usepackage{listings}
 \usepackage{xcolor}
-\usepackage{hyperref}
-\usepackage{geometry}
-\usepackage{float}
 \usepackage{booktabs}
-\usepackage{caption}
-\usepackage{subcaption}
-\usepackage{algorithm}
-\usepackage{algorithmic}
-\usepackage{tikz}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
 
 \geometry{margin=2.5cm}
+\setlength{\headheight}{13.6pt}
+\addtolength{\topmargin}{-1.6pt}
 
-% Python listings configuration
-\definecolor{codegreen}{rgb}{0,0.6,0}
-\definecolor{codegray}{rgb}{0.5,0.5,0.5}
-\definecolor{codepurple}{rgb}{0.58,0,0.82}
-\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
-
-\lstdefinestyle{pythonstyle}{
-    backgroundcolor=\color{backcolour},
-    commentstyle=\color{codegreen},
-    keywordstyle=\color{magenta},
-    numberstyle=\tiny\color{codegray},
-    stringstyle=\color{codepurple},
-    basicstyle=\ttfamily\footnotesize,
-    breakatwhitespace=false,
+% Code styling
+\lstset{
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{gray!10},
+    frame=single,
     breaklines=true,
-    captionpos=b,
-    keepspaces=true,
-    numbers=left,
-    numbersep=5pt,
-    showspaces=false,
-    showstringspaces=false,
-    showtabs=false,
-    tabsize=2,
-    language=Python
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red!60!black}
 }
 
-\lstset{style=pythonstyle}
+% Header/Footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Deep Learning Final Project}
+\lhead{Emoji Recognition System}
+\rfoot{Page \thepage}
 
-\title{\textbf{Real-Time Facial Emotion Recognition}\\
-\large Technical Report - Deep Learning}
-\author{Cyril}
-\date{November 2025}
+\title{
+    \vspace{-1cm}
+    \textbf{Real-Time Emoji Recognition System}\\
+    \large Using Convolutional Neural Networks and MediaPipe\\
+    \vspace{0.5cm}
+    \normalsize Deep Learning -- Final Project Report
+}
+
+\author{
+    POSTECH -- Deep Learning Course\\
+    December 2025
+}
+
+\date{}
 
 \begin{document}
 
 \maketitle
 
 \begin{abstract}
-This report presents the development of a real-time facial emotion recognition system using Convolutional Neural Networks (CNN). We detail the initial architecture, the optimizations made, and the technical choices implemented to improve detection performance. The system is capable of classifying eight emotions (anger, disgust, fear, happiness, sadness, surprise, neutrality, and contempt) from a webcam video stream, using a unified multi-source approach (AffectNet + FER+).
+This report presents the development of a real-time emoji recognition system that combines facial emotion recognition using Convolutional Neural Networks (CNN) with hand gesture detection via MediaPipe. The project evolved significantly from the initial proposal, ultimately achieving a comprehensive application capable of mapping detected emotions and gestures to appropriate emojis. We detail our organizational approach, the iterative development process, and the technical implementation including model architecture, multi-dataset training, and ONNX optimization for deployment.
 \end{abstract}
 
 \tableofcontents
 \newpage
 
 %==============================================================================
-\section{Introduction}
+\section{Project Organization}
 %==============================================================================
 
-Automatic facial emotion recognition is a rapidly expanding field with applications in human-computer interaction, mental health, marketing, and education. This project implements a complete real-time emotion recognition system, from model training to inference via webcam.
+Effective organization was crucial for the success of this project. We employed a combination of cloud computing resources, local development environments, and version control to ensure smooth collaboration and efficient progress.
 
-\subsection{Objectives}
-\begin{itemize}
-    \item Develop a CNN model capable of classifying 8 facial emotions (7 from FER2013 + Contempt from FER+).
-    \item Implement a real-time application with face detection.
-    \item Optimize performance for smooth usage.
-    \item Improve accuracy through advanced deep learning techniques.
+\subsection{Training Infrastructure}
+
+For model training, we chose \textbf{Google Colaboratory} over alternatives such as Vast.ai. This decision was driven by several factors:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Platform familiarity}: Our team had extensive prior experience with Google Colab from previous projects, significantly reducing the learning curve and setup time.
+    \item \textbf{Collaborative features}: Colab's notebook sharing capabilities facilitated real-time collaboration on training code, allowing multiple team members to contribute and experiment simultaneously.
+    \item \textbf{Integrated GPU access}: The seamless access to NVIDIA GPUs (T4) without complex configuration enabled rapid prototyping and experimentation.
+    \item \textbf{Integration with Google Drive}: Easy storage and retrieval of datasets, checkpoints, and trained models streamlined our workflow.
 \end{itemize}
 
-%==============================================================================
-\section{Initial Architecture}
-%==============================================================================
+The training workflow was centralized in a Jupyter notebook (\texttt{training.ipynb}) that encapsulates all aspects of model training, from data loading to hyperparameter configuration and result visualization.
 
-\subsection{Dataset: Unified Multi-Source Approach}
+\subsection{Development Environment}
 
-To maximize model robustness, we adopted a dataset fusion strategy. The system now uses a **unified 8-class dataset** combining:
+For non-training code (application development, model export, utilities), we adopted a more traditional development approach:
 
-\begin{itemize}
-    \item \textbf{Balanced AffectNet}: Main source ($\sim$41k images, RGB 75$\times$75).
-    \item \textbf{FER+}: Improved version of FER2013 with labels corrected by voting (Microsoft), upscaled to 75$\times$75.
+\begin{itemize}[noitemsep]
+    \item \textbf{IDE}: Visual Studio Code served as our primary development environment, providing excellent Python support, debugging capabilities, and integrated terminal access.
+    \item \textbf{Local execution}: The real-time application (\texttt{app\_v4.py}) and utility scripts were developed and tested locally to ensure compatibility with webcam hardware and real-time performance requirements.
+    \item \textbf{Version control}: GitHub was used for code versioning, enabling collaborative development, code review, and maintaining a clear history of changes throughout the project lifecycle.
 \end{itemize}
 
-\textbf{Advantages of this approach:}
-\begin{itemize}
-    \item \textbf{Increased Data Volume}: Combines the diversity of AffectNet with the hard cases of FER+.
-    \item \textbf{High-Quality Labels}: Exclusive use of verified datasets (FER+ vs original FER2013).
-    \item \textbf{Unified Mapping}: All sources are mapped to the 8 standard emotions (Anger, Disgust, Fear, Happy, Sad, Surprise, Neutral, Contempt).
-\end{itemize}
-
-\subsection{Initial Model (\texttt{model.py})}
-
-The initial architecture is a simple CNN with 3 convolutional blocks:
-
-\begin{lstlisting}[caption={CNN Architecture for Balanced AffectNet}]
-class FaceEmotionCNN(nn.Module):
-    def __init__(self, num_classes=8, in_channels=3, input_size=75):
-        super(FaceEmotionCNN, self).__init__()
-        # Convolutional Block 1 (75x75 -> 37x37)
-        self.conv1a = nn.Conv2d(in_channels, 64, kernel_size=3, padding=1)
-        self.bn1a = nn.BatchNorm2d(64)
-        self.conv1b = nn.Conv2d(64, 64, kernel_size=3, padding=1)
-        self.bn1b = nn.BatchNorm2d(64)
-        self.pool1 = nn.MaxPool2d(2, 2)
-        self.dropout1 = nn.Dropout(0.1)
-        
-        # ... Blocks 2, 3, 4 similar ...
-        
-        # Global Average Pooling
-        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
-        
-        # Fully Connected Layers
-        self.fc1 = nn.Linear(512, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, num_classes)  # 8 emotions
-\end{lstlisting}
-
-\subsubsection{Analysis of the Initial Architecture}
+\subsection{Workflow Summary}
 
 \begin{table}[H]
 \centering
-\caption{Dimensions through the network (Balanced AffectNet)}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Layer} & \textbf{Input} & \textbf{Output} & \textbf{Parameters} \\
-\midrule
-Block1 (2$\times$Conv) + Pool & $3 \times 75 \times 75$ & $64 \times 37 \times 37$ & 38,592 \\
-Block2 (2$\times$Conv) + Pool & $64 \times 37 \times 37$ & $128 \times 18 \times 18$ & 147,712 \\
-Block3 (2$\times$Conv) + Pool & $128 \times 18 \times 18$ & $256 \times 9 \times 9$ & 590,336 \\
-Block4 (2$\times$Conv) + Pool & $256 \times 9 \times 9$ & $512 \times 4 \times 4$ & 2,360,320 \\
-Global Avg Pool & $512 \times 4 \times 4$ & 512 & 0 \\
-FC1 + BN & 512 & 256 & 131,584 \\
-FC2 + BN & 256 & 128 & 33,024 \\
-FC3 & 128 & 8 & 1,032 \\
-\midrule
-\textbf{Total} & & & \textbf{$\approx$ 3.3M} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\textbf{Pros:}
-\begin{itemize}
-    \item Use of Batch Normalization to stabilize training.
-    \item Dropout (50\%) to regularize and avoid overfitting.
-    \item Simple architecture, fast to train.
-\end{itemize}
-
-\textbf{Limitations:}
-\begin{itemize}
-    \item Few convolutional layers (low feature extraction capacity).
-    \item Limited number of filters (32-64-128).
-    \item No regularization in convolutional layers.
-    \item Very large FC1 layer (2.3M parameters) creating a bottleneck.
-\end{itemize}
-
-\subsection{Initial Training Script (\texttt{train.py})}
-
-\begin{lstlisting}[caption={Initial Training Script}]
-# Hyperparameters
-BATCH_SIZE = 64
-LEARNING_RATE = 0.001
-EPOCHS = 25
-
-# Simple transformations
-transform = transforms.Compose([
-    transforms.ToPILImage(),
-    transforms.ToTensor(),
-])
-
-# Dataset loading
-dataset = FER2013Dataset('./data/fer2013/fer2013.csv', transform=transform)
-train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
-
-# Model and optimizer
-model = FaceEmotionCNN().to(device)
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-
-# Training loop
-for epoch in range(EPOCHS):
-    running_loss = 0.0
-    for inputs, labels in train_loader:
-        inputs, labels = inputs.to(device), labels.to(device)
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item()
-    
-    print(f"Epoch {epoch+1}, Loss: {running_loss/len(train_loader)}")
-
-torch.save(model.state_dict(), 'emotion_model.pth')
-\end{lstlisting}
-
-\textbf{Limitations of Initial Training:}
-\begin{itemize}
-    \item No data augmentation (risk of overfitting).
-    \item No train/validation split (impossible to detect overfitting).
-    \item Fixed learning rate (suboptimal convergence).
-    \item No early stopping (resource waste).
-    \item No class imbalance management.
-\end{itemize}
-
-\subsection{Initial Application (\texttt{app.py})}
-
-The initial application performs:
-\begin{enumerate}
-    \item Video capture via webcam.
-    \item Face detection with Haar Cascade.
-    \item Image preprocessing (resize 48$\times$48, grayscale).
-    \item Inference with the CNN model.
-    \item Display of detected emotion with emoji.
-\end{enumerate}
-
-\begin{lstlisting}[caption={Main loop of the initial application}]
-while True:
-    ret, frame = cap.read()
-    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray_frame, 
-                                          scaleFactor=1.3, 
-                                          minNeighbors=5)
-
-    for (x, y, w, h) in faces:
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
-        roi_gray = gray_frame[y:y+h, x:x+w]
-        
-        # Preprocessing
-        roi_tensor = data_transform(roi_gray).unsqueeze(0).to(device)
-
-        # Prediction
-        with torch.no_grad():
-            outputs = model(roi_tensor)
-            probabilities = torch.nn.functional.softmax(outputs, dim=1)
-            max_prob, predicted_idx = torch.max(probabilities, 1)
-            
-            idx = predicted_idx.item()
-            confidence = max_prob.item() * 100
-            emotion_text = emotion_dict[idx]
-\end{lstlisting}
-
-\textbf{Limitations:}
-\begin{itemize}
-    \item Unstable predictions (oscillations between frames).
-    \item No lighting normalization.
-    \item Suboptimal face detection parameters.
-    \item Basic user interface.
-\end{itemize}
-
-%==============================================================================
-\section{Architecture Optimizations}
-%==============================================================================
-
-\subsection{New CNN Architecture}
-
-The improved architecture is designed to process RGB 75$\times$75 images and integrates Squeeze-and-Excitation (SE) attention blocks:
-
-\begin{lstlisting}[caption={Improved CNN Architecture with SE Blocks}]
-class ConvBlock(nn.Module):
-    def __init__(self, in_c, out_c, use_se=True):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_c, out_c, 3, padding=1)
-        self.bn1 = nn.BatchNorm2d(out_c)
-        self.conv2 = nn.Conv2d(out_c, out_c, 3, padding=1)
-        self.bn2 = nn.BatchNorm2d(out_c)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.se = SEBlock(out_c) if use_se else nn.Identity()
-        
-    def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = self.se(x)
-        return self.pool(x)
-
-class FaceEmotionCNN(nn.Module):
-    def __init__(self, num_classes=8):
-        super().__init__()
-        # Input: 75x75 RGB
-        self.block1 = ConvBlock(3, 32, use_se=True)    # -> 37x37
-        self.block2 = ConvBlock(32, 64, use_se=True)   # -> 18x18
-        self.block3 = ConvBlock(64, 128, use_se=True)  # -> 9x9
-        self.block4 = ConvBlock(128, 256, use_se=True) # -> 4x4
-        
-        self.global_pool = nn.AdaptiveAvgPool2d(1)
-        
-        self.classifier = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(256, 512),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, num_classes)
-        )
-\end{lstlisting}
-
-\subsubsection{Justification of Architectural Choices}
-
-\begin{enumerate}
-    \item \textbf{Squeeze-and-Excitation (SE) Blocks} \\
-    These blocks dynamically recalibrate feature maps per channel, allowing the network to focus on the most relevant features for the emotion.
-    
-    \item \textbf{Double Convolution per Block} \\
-    Increases depth and non-linearity without exploding the number of parameters.
-    
-    \item \textbf{Global Average Pooling (GAP)} \\
-    Replaces traditional flattening, drastically reducing parameters and the risk of overfitting.
-    
-    \item \textbf{RGB 75$\times$75 Input} \\
-    Unlike classic models on FER2013 (48$\times$48 Grayscale), using color and higher resolution allows capturing finer details.
-\end{enumerate}
-
-\begin{table}[H]
-\centering
-\caption{Architecture Comparison}
-\begin{tabular}{lcc}
-\toprule
-\textbf{Feature} & \textbf{Initial} & \textbf{Improved} \\
-\midrule
-Input & 48$\times$48 Gray & 75$\times$75 RGB \\
-Conv Blocks & 3 & 4 \\
-Max Filters & 128 & 256 \\
-Attention & No & SE-Blocks \\
-Global Average Pooling & No & Yes \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-%==============================================================================
-\section{Training Optimizations}
-%==============================================================================
-
-\subsection{Data Augmentation}
-
-Data augmentation is crucial for a small dataset like FER2013. It artificially increases the diversity of training data.
-
-\begin{lstlisting}[caption={Data Augmentation Transformations}]
-train_transform = transforms.Compose([
-    transforms.ToPILImage(),
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomRotation(10),
-    transforms.RandomAffine(
-        degrees=0, 
-        translate=(0.1, 0.1),
-        scale=(0.9, 1.1)
-    ),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2),
-    transforms.ToTensor(),
-])
-\end{lstlisting}
-
-\begin{table}[H]
-\centering
-\caption{Data Augmentation Transformations}
-\begin{tabular}{lp{8cm}}
-\toprule
-\textbf{Transformation} & \textbf{Justification} \\
-\midrule
-RandomHorizontalFlip (p=0.5) & Expressions are symmetric. Effectively doubles the dataset. \\
-RandomRotation (±10°) & Simulates natural slight head tilts. \\
-RandomAffine (translate) & Compensates for face position variations in the frame. \\
-RandomAffine (scale 0.9-1.1) & Simulates different camera-face distances. \\
-ColorJitter (brightness, contrast) & Robustness to lighting variations. \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Train/Validation Split}
-
-\begin{lstlisting}[caption={Dataset Split}]
-VALIDATION_SPLIT = 0.15  # 15% for validation
-
-val_size = int(len(full_dataset) * VALIDATION_SPLIT)
-train_size = len(full_dataset) - val_size
-
-train_dataset, val_dataset = random_split(
-    full_dataset, 
-    [train_size, val_size],
-    generator=torch.Generator().manual_seed(42)
-)
-\end{lstlisting}
-
-\textbf{Importance:} Validation allows to:
-\begin{itemize}
-    \item Detect overfitting (train loss $\downarrow$ but val loss $\uparrow$).
-    \item Select the best model.
-    \item Tune hyperparameters.
-\end{itemize}
-
-\subsection{Early Stopping}
-
-Early stopping halts training when validation no longer improves:
-
-\begin{lstlisting}[caption={Early Stopping Implementation}]
-PATIENCE = 7
-best_val_acc = 0.0
-patience_counter = 0
-
-for epoch in range(EPOCHS):
-    # ... training ...
-    val_loss, val_acc = validate(model, val_loader, criterion, device)
-    
-    if val_acc > best_val_acc:
-        best_val_acc = val_acc
-        patience_counter = 0
-        torch.save(model.state_dict(), 'emotion_model_best.pth')
-    else:
-        patience_counter += 1
-        if patience_counter >= PATIENCE:
-            print("Early stopping triggered!")
-            break
-\end{lstlisting}
-
-\subsection{Learning Rate Scheduler}
-
-The scheduler reduces the learning rate when validation stagnates:
-
-\begin{lstlisting}[caption={Learning Rate Scheduler}]
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, 
-    mode='min',      # Monitors loss
-    factor=0.5,      # Divides LR by 2
-    patience=3       # Waits 3 epochs without improvement
-)
-
-# In the training loop
-scheduler.step(val_loss)
-\end{lstlisting}
-
-\textbf{Principle:} A high LR at the beginning allows fast convergence, then a lower LR allows precise fine-tuning.
-
-\subsection{AdamW Optimizer}
-
-\begin{lstlisting}[caption={AdamW Optimizer with Weight Decay}]
-optimizer = optim.AdamW(
-    model.parameters(), 
-    lr=LEARNING_RATE, 
-    weight_decay=1e-4
-)
-\end{lstlisting}
-
-AdamW corrects an issue in Adam: weight decay is applied directly to weights rather than gradients, resulting in better L2 regularization.
-
-\subsection{Gradient Clipping}
-
-\begin{lstlisting}[caption={Gradient Clipping for Stability}]
-loss.backward()
-torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-optimizer.step()
-\end{lstlisting}
-
-Prevents exploding gradients which can destabilize training.
-
-%==============================================================================
-\section{Real-Time Application Optimizations}
-%==============================================================================
-
-\subsection{Temporal Smoothing of Predictions}
-
-The main problem with frame-by-frame predictions is instability: the displayed emotion can change rapidly between successive frames, creating an unpleasant \emph{flickering} effect.
-
-\begin{lstlisting}[caption={Temporal Smoothing with Weighted Average}]
-from collections import deque
-
-SMOOTHING_WINDOW = 5
-prediction_history = deque(maxlen=SMOOTHING_WINDOW)
-
-def get_smoothed_prediction(current_probs):
-    prediction_history.append(current_probs.cpu().numpy())
-    
-    if len(prediction_history) < 2:
-        return current_probs
-    
-    # Weighted average (recent frames = more weight)
-    weights = np.linspace(0.5, 1.0, len(prediction_history))
-    weights = weights / weights.sum()
-    
-    smoothed = np.zeros(7)
-    for i, probs in enumerate(prediction_history):
-        smoothed += weights[i] * probs
-    
-    return torch.tensor(smoothed)
-\end{lstlisting}
-
-\textbf{Principle:} Instead of using only the current frame's prediction, we calculate a weighted average over the last $N$ frames. Recent frames have more weight to maintain responsiveness.
-
-\subsection{Histogram Equalization}
-
-\begin{lstlisting}[caption={Lighting Normalization}]
-# Before preprocessing
-roi_gray = cv2.equalizeHist(roi_gray)
-\end{lstlisting}
-
-Histogram equalization normalizes the distribution of gray levels, making the model more robust to lighting variations.
-
-\begin{figure}[H]
-\centering
-\fbox{\parbox{0.8\textwidth}{\centering
-\textbf{Dark Image} $\longrightarrow$ \textbf{Equalized Histogram}
-}}
-\caption{Equalization redistributes intensities across the full [0, 255] range}
-\end{figure}
-
-\subsection{Optimized Detection Parameters}
-
-\begin{lstlisting}[caption={Optimized Face Detection Parameters}]
-faces = face_cascade.detectMultiScale(
-    gray_frame, 
-    scaleFactor=1.1,   # More precise (was 1.3)
-    minNeighbors=5,
-    minSize=(48, 48),  # Minimum size
-    flags=cv2.CASCADE_SCALE_IMAGE
-)
-\end{lstlisting}
-
-\begin{table}[H]
-\centering
-\caption{Impact of Detection Parameters}
-\begin{tabular}{lcc}
-\toprule
-\textbf{Parameter} & \textbf{Low Value} & \textbf{High Value} \\
-\midrule
-scaleFactor & More precise, slower & Less precise, faster \\
-minNeighbors & More false positives & Fewer detections \\
-minSize & Detects small faces & Ignores small faces \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Improved User Interface}
-
-\begin{itemize}
-    \item \textbf{Colors per Emotion}: Each emotion has a distinctive color.
-    \item \textbf{Progress Bars}: Display probabilities of all classes.
-    \item \textbf{Text Background}: Improves readability.
-\end{itemize}
-
-\begin{lstlisting}[caption={Colors per Emotion}]
-emotion_colors = {
-    0: (0, 0, 255),     # Red - Angry
-    1: (0, 128, 0),     # Dark Green - Disgust
-    2: (128, 0, 128),   # Purple - Fear
-    3: (0, 255, 255),   # Yellow - Happy
-    4: (255, 0, 0),     # Blue - Sad
-    5: (0, 165, 255),   # Orange - Surprise
-    6: (128, 128, 128)  # Gray - Neutral
-}
-\end{lstlisting}
-
-%==============================================================================
-\section{Dataset Improvement}
-%==============================================================================
-
-\subsection{Advantages of Multi-Source Approach}
-
-Compared to FER2013, our unified dataset presents several major advantages:
-
-\begin{enumerate}
-    \item \textbf{Higher Resolution}: 75$\times$75 pixel images (vs 48$\times$48).
-    \item \textbf{RGB Images}: 3 color channels offering more information.
-    \begin{table}[H]
-    \centering
-    \begin{tabular}{lcc}
-    \toprule
-    \textbf{Emotion} & \textbf{Number of Images} & \textbf{Percentage} \\
-    \midrule
-    Angry & 5,126 & 12.5\% \\
-    Contempt & 5,126 & 12.5\% \\
-    Disgust & 5,126 & 12.5\% \\
-    Fear & 5,126 & 12.5\% \\
-    Happy & 5,126 & 12.5\% \\
-    Neutral & 5,126 & 12.5\% \\
-    Sad & 5,126 & 12.5\% \\
-    Surprise & 5,126 & 12.5\% \\
-    \bottomrule
-    \end{tabular}
-    \caption{Class distribution in the unified dataset.}
-    \end{table}
-    
-    \item \textbf{Balanced Dataset}: No class bias, unlike FER2013.
-    \item \textbf{8 Native Classes}: Includes Contempt from the start.
-    \item \textbf{Better Quality}: More reliable annotations.
-\end{enumerate}
-
-\subsection{Dataset Loading}
-
-The unified dataset is organized in folders per emotion:
-
-\begin{lstlisting}[caption={Using the Unified Dataset}]
-class UnifiedDataset(Dataset):
-    EMOTION_CLASSES = {
-        'Anger': 0, 'Disgust': 1, 'Fear': 2, 'Happy': 3,
-        'Sad': 4, 'Surprise': 5, 'Neutral': 6, 'Contempt': 7,
-    }
-    
-    def __init__(self, root_dir, split='train', transform=None):
-        self.images = []
-        self.labels = []
-        
-        for emotion_name, emotion_idx in self.EMOTION_CLASSES.items():
-            emotion_dir = os.path.join(root_dir, split, emotion_name)
-            for img_name in os.listdir(emotion_dir):
-                self.images.append(os.path.join(emotion_dir, img_name))
-                self.labels.append(emotion_idx)
-    
-    def __getitem__(self, idx):
-        image = Image.open(self.images[idx]).convert('RGB')
-        image = np.array(image)  # 75x75x3
-        label = self.labels[idx]
-        
-        if self.transform:
-            image = self.transform(image=image)['image']
-        
-        return image, label
-\end{lstlisting}
-
-\subsection{Class Balancing}
-
-To compensate for imbalance (especially the lack of \textit{Disgust}), two techniques are implemented:
-
-\subsubsection{Class Weights in Loss}
-
-\begin{lstlisting}[caption={CrossEntropyLoss with Class Weights}]
-def get_class_weights(dataset):
-    class_counts = np.bincount(labels, minlength=7)
-    weights = 1.0 / class_counts
-    weights = weights / weights.sum() * len(weights)
-    return torch.FloatTensor(weights)
-
-class_weights = get_class_weights(train_dataset)
-criterion = nn.CrossEntropyLoss(weight=class_weights)
-\end{lstlisting}
-
-The weight of each class is inversely proportional to its frequency:
-\begin{equation}
-    w_c = \frac{N}{N_c \times C}
-\end{equation}
-where $N$ is the total number of samples, $N_c$ the number of samples of class $c$, and $C$ the number of classes.
-
-\subsubsection{WeightedRandomSampler}
-
-\begin{lstlisting}[caption={Balanced Sampler}]
-def get_balanced_sampler(dataset):
-    class_counts = np.bincount(labels, minlength=7)
-    weights = 1.0 / class_counts
-    sample_weights = weights[labels]
-    
-    sampler = WeightedRandomSampler(
-        weights=sample_weights,
-        num_samples=len(sample_weights),
-        replacement=True
-    )
-    return sampler
-\end{lstlisting}
-
-The sampler oversamples minority classes during training.
-
-%==============================================================================
-\section{Advanced Training Techniques}
-%==============================================================================
-
-To significantly improve performance, especially on difficult classes (Disgust, Contempt, Fear, Angry), we developed an advanced training workflow (Jupyter notebook) integrating the latest deep learning techniques.
-
-\subsection{Label Smoothing}
-
-Label smoothing regularizes by replacing hard labels (one-hot) with soft labels, preventing the model from being too confident in its predictions and improving generalization:
-
-\begin{equation}
-    y_\text{smooth} = (1 - \epsilon) \cdot y_\text{hard} + \frac{\epsilon}{K}
-\end{equation}
-
-with $\epsilon = 0.1$ and $K = 8$ classes.
-
-\begin{lstlisting}[caption={Label Smoothing Application}]
-class LabelSmoothingCrossEntropy(nn.Module):
-    def __init__(self, smoothing=0.1):
-        super().__init__()
-        self.smoothing = smoothing
-        
-    def forward(self, inputs, targets):
-        n_classes = inputs.size(-1)
-        log_probs = F.log_softmax(inputs, dim=-1)
-        
-        targets_smooth = torch.zeros_like(log_probs)
-        targets_smooth.fill_(self.smoothing / (n_classes - 1))
-        targets_smooth.scatter_(1, targets.unsqueeze(1), 1.0 - self.smoothing)
-        
-        loss = -(targets_smooth * log_probs).sum(dim=-1)
-        return loss.mean()
-\end{lstlisting}
-
-\subsection{Mixup: Regularization by Interpolation}
-
-Mixup \cite{zhang2018mixup} creates new training examples by linearly interpolating pairs of images and their labels:
-
-\begin{equation}
-    \tilde{x} = \lambda x_i + (1 - \lambda) x_j
-\end{equation}
-\begin{equation}
-    \tilde{y} = \lambda y_i + (1 - \lambda) y_j
-\end{equation}
-
-where $\lambda \sim \text{Beta}(\alpha, \alpha)$ with $\alpha = 0.2$.
-
-\begin{lstlisting}[caption={Mixup Implementation}]
-def mixup_data(x, y, alpha=0.2):
-    if alpha > 0:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1
-
-    batch_size = x.size(0)
-    index = torch.randperm(batch_size).to(x.device)
-
-    mixed_x = lam * x + (1 - lam) * x[index, :]
-    y_a, y_b = y, y[index]
-    return mixed_x, y_a, y_b, lam
-\end{lstlisting}
-
-\subsection{Advanced Augmentation with Albumentations}
-
-We use the Albumentations library for more sophisticated transformations:
-
-\begin{lstlisting}[caption={Albumentations Transformations}]
-import albumentations as A
-
-train_transform = A.Compose([
-    A.HorizontalFlip(p=0.5),
-    A.Affine(
-        translate_percent={"x": (-0.05, 0.05), "y": (-0.05, 0.05)},
-        scale=(0.95, 1.05),
-        rotate=(-10, 10),
-        p=0.4
-    ),
-    A.OneOf([
-        A.GaussNoise(std_range=(0.02, 0.08), p=1),
-        A.GaussianBlur(blur_limit=(3, 5), p=1),
-    ], p=0.2),
-    A.OneOf([
-        A.RandomBrightnessContrast(p=1),
-        A.RandomGamma(p=1),
-        A.HueSaturationValue(p=1),
-    ], p=0.4),
-    A.CoarseDropout(
-        num_holes_range=(1, 2),
-        hole_height_range=(4, 8),
-        hole_width_range=(4, 8),
-        fill=0,
-        p=0.2
-    ),
-    A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ToTensorV2(),
-])
-\end{lstlisting}
-
-\subsection{OneCycleLR Scheduler}
-
-We use the \textbf{OneCycleLR} learning rate policy, which increases the learning rate to a maximum and then decreases it rapidly. This allows for faster convergence and better generalization ("super-convergence" phenomenon).
-
-\begin{lstlisting}[caption={OneCycleLR Scheduler}]
-scheduler = optim.lr_scheduler.OneCycleLR(
-    optimizer,
-    max_lr=config.LEARNING_RATE * 10,
-    epochs=config.EPOCHS,
-    steps_per_epoch=len(train_loader),
-    pct_start=0.3,
-    anneal_strategy='cos'
-)
-\end{lstlisting}
-
-\subsection{Hardware Optimizations and Speed}
-
-To accelerate training on large datasets, we leveraged modern PyTorch 2.0+ capabilities:
-
-\begin{itemize}
-    \item \textbf{Automatic Mixed Precision (AMP)}: Using \texttt{float16} for tensor calculations, reducing memory footprint and accelerating operations on GPU (Tensor Cores).
-    \item \textbf{torch.compile}: JIT compilation of the model with \texttt{max-autotune} mode, optimizing the computation graph for the specific GPU architecture.
-    \item \textbf{Large Batch Size}: Thanks to memory optimizations, we use a batch size of \textbf{1536}, which stabilizes gradients and significantly speeds up training.
-    \item \textbf{CUDA Optimizations}: Enabling TF32 (TensorFloat-32) and tuning cuDNN kernels.
-\end{itemize}
-
-%==============================================================================
-\section{Final Application (\texttt{app\_v3.py})}
-%==============================================================================
-
-The final application (\texttt{app\_v3.py}) integrates all optimizations: emotion recognition by CNN, facial analysis via MediaPipe, and gesture detection.
-
-\subsection{MediaPipe Face Mesh: Facial Landmark Analysis}
-
-Face Mesh detects 468 3D landmarks on the face, allowing fine analysis of facial features to refine emotion prediction:
-
-\begin{lstlisting}[caption={FacialAnalyzer Class (excerpt)}]
-class FacialAnalyzer:
-    def analyze(self, frame_rgb):
-        results = self.face_mesh.process(frame_rgb)
-        features = {}
-        
-        # Mouth opening calculation
-        mouth_h = dist(13, 14)
-        mouth_w = dist(61, 291)
-        features["mouth_open"] = np.clip(mouth_h / (face_h * 0.12), 0, 1)
-        
-        # Smile detection
-        if mouth_h > 1:
-            smile_ratio = mouth_w / mouth_h
-            features["smile"] = np.clip((smile_ratio - 2.5) / 4.0, 0, 1)
-            
-        # Asymmetry (for Contempt)
-        left_corner = point(61)
-        right_corner = point(291)
-        asymmetry = abs(left_corner[1] - right_corner[1]) / (face_h * 0.05)
-        features["asymmetric_mouth"] = np.clip(asymmetry, 0, 1)
-        
-        return features
-\end{lstlisting}
-
-\subsection{MediaPipe Hands: Gesture Detection}
-
-To enrich interaction, we added hand gesture detection:
-
-\begin{lstlisting}[caption={HandRecognizer Class (excerpt)}]
-class HandRecognizer:
-    def _classify(self, fingers, landmarks):
-        thumb, index, middle, ring, pinky = fingers
-        
-        # Thumbs up
-        if thumb and not any([index, middle, ring, pinky]):
-            return "thumbs_up"
-            
-        # Peace (V sign)
-        if not thumb and index and middle and not ring and not pinky:
-            return "peace"
-            
-        # OK sign
-        if thumb and index:
-            # ... thumb-index distance verification ...
-            return "ok"
-            
-        # Rock
-        if not thumb and index and not middle and not ring and pinky:
-            return "rock"
-            
-        return None
-\end{lstlisting}
-
-\subsection{Extended Emoji Mapping}
-
-The application combines the emotion predicted by the CNN, facial features (wink, smile), and gestures to display the most relevant emoji.
-
-\begin{table}[H]
-\centering
-\caption{Examples of Emoji Mapping}
 \begin{tabular}{lll}
 \toprule
-\textbf{CNN Emotion} & \textbf{Condition} & \textbf{Emoji} \\
+\textbf{Task} & \textbf{Platform} & \textbf{Tools} \\
 \midrule
-Happy & Smile > 0.6 & Grinning Face \\
-Happy & Eyes Closed > 0.5 & Smiling Face with Smiling Eyes \\
-Any & Wink Detected & Winking Face \\
-Angry & Mouth Open > 0.5 & Face with Symbols on Mouth \\
-Disgust & Nose Wrinkle > 0.3 & Nauseated Face \\
-Neutral & Brow Raised > 0.4 & Thinking Face \\
+Model Training & Google Colab & Jupyter Notebook, PyTorch \\
+Dataset Management & Google Drive / Kaggle & kagglehub \\
+Application Development & Local (Windows) & VS Code, Python \\
+Version Control & Cloud & GitHub \\
+Real-time Testing & Local & OpenCV, Webcam \\
 \bottomrule
 \end{tabular}
+\caption{Development workflow organization}
 \end{table}
 
 %==============================================================================
-\section{Inference Optimizations}
+\section{Project Evolution}
 %==============================================================================
 
-\subsection{Test-Time Augmentation (TTA)}
+The development of this project followed an iterative path that diverged significantly from our initial proposal. This section chronicles the evolution of our approach and the key decisions that shaped the final system.
 
-TTA applies multiple transformations to the input image and averages the predictions to reduce variance:
+\subsection{Departure from the Initial Proposal}
 
-\begin{lstlisting}[caption={TTA Implementation}]
-def predict(self, face_roi, use_tta=True):
-    if use_tta:
-        all_probs = []
-        for transform in self.tta_transforms:
-            # Apply transformation (e.g., Flip)
-            tensor = transform(face_roi).unsqueeze(0).to(self.device)
-            output = self.model(tensor)
-            all_probs.append(F.softmax(output, dim=1)[0])
-        
-        # Average probabilities
-        probs = torch.stack(all_probs).mean(dim=0)
-    else:
-        # ... simple prediction ...
-\end{lstlisting}
+Our original project proposal envisioned implementing a \textbf{Multi-Layer Perceptron (MLP)} for emotion recognition. However, early research and experimentation led us to reconsider this approach:
 
-\subsection{CLAHE Preprocessing}
+\begin{itemize}[noitemsep]
+    \item Image classification tasks benefit greatly from the spatial feature extraction capabilities of CNNs.
+    \item State-of-the-art results in facial emotion recognition consistently employ convolutional architectures.
+    \item The hierarchical feature learning of CNNs is particularly suited for detecting subtle facial expressions.
+\end{itemize}
 
-We use CLAHE (Contrast Limited Adaptive Histogram Equalization) to improve local contrast and robustness to lighting variations, applied to each RGB channel.
+As a result, we made an early decision to \textbf{directly implement CNN-based architectures}, bypassing MLP entirely. This pivot proved to be a defining factor in the project's success.
 
-\subsection{Exponential Temporal Smoothing}
+\subsection{Dataset Journey}
 
-To avoid prediction flickering, we use an exponential weighted average over the last frames:
+The evolution of our training data strategy reflects our commitment to continuous improvement:
 
-\begin{lstlisting}[caption={Temporal Smoothing}]
-# Exponential weights (recent frames more important)
-weights = np.exp(np.linspace(-1, 0, len(self.history)))
-weights /= weights.sum()
+\subsubsection{Phase 1: FER2013}
+Initially, we trained exclusively on the \textbf{FER2013} dataset, a widely-used benchmark containing approximately 35,000 grayscale images (48×48 pixels) across 7 emotion categories. While this provided a solid starting point, we quickly identified limitations:
+\begin{itemize}[noitemsep]
+    \item Noisy labels leading to inconsistent training signals
+    \item Limited to 7 emotion classes (no ``Contempt'' category)
+    \item Small image resolution constraining feature extraction
+\end{itemize}
 
-smoothed = np.zeros(NUM_CLASSES)
-for i, h in enumerate(self.history):
-    smoothed += weights[i] * h
-\end{lstlisting}
-
-%==============================================================================
-\section{Expected Results}
-%==============================================================================
-
-\subsection{Accuracy Improvement}
-
-\begin{table}[H]
-\centering
-\caption{Expected Accuracy Improvement with Unified Dataset}
-\begin{tabular}{lcc}
-\toprule
-\textbf{Configuration} & \textbf{Estimated Accuracy} & \textbf{Gain} \\
-\midrule
-FER2013 baseline (grayscale 48$\times$48) & 60-65\% & - \\
-Unified Dataset (RGB 75$\times$75) & 70-75\% & +10\% \\
-+ Data augmentation RGB & 73-78\% & +3\% \\
-+ Mixup/CutMix & 76-80\% & +3\% \\
-+ Label Smoothing & 78-82\% & +2\% \\
-+ TTA at inference & 80-84\% & +2\% \\
-\midrule
-\textbf{Total with optimizations} & \textbf{80-84\%} & \textbf{+20-24\%} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Improvement on Difficult Classes}
-
-\begin{table}[H]
-\centering
-\caption{Expected Impact on Classes (with balanced dataset)}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Emotion} & \textbf{FER2013 Baseline} & \textbf{Unified Dataset} & \textbf{Gain} \\
-\midrule
-Angry & 55\% & 75\% & +20\% \\
-Disgust & 35\% & 72\% & +37\% \\
-Fear & 45\% & 70\% & +25\% \\
-Contempt & 40\% & 68\% & +28\% \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\textit{Note: The major improvement on Disgust and Contempt is due to the perfectly balanced dataset and higher quality RGB images.}
-
-\subsection{User Experience Improvement}
+\subsubsection{Phase 2: Discovery of AffectNet and FER+}
+Through research, we discovered two additional datasets that significantly enhanced our training:
 
 \begin{itemize}
-    \item \textbf{Stability}: Improved temporal smoothing eliminates \emph{flickering}.
-    \item \textbf{Robustness}: CLAHE handles lighting variations better than standard equalization.
-    \item \textbf{TTA Accuracy}: Test-time augmentation reduces prediction variance.
-    \item \textbf{Extended Emojis}: Over 15 possible emojis thanks to facial feature analysis.
-    \item \textbf{Hand Gestures}: 8 recognized gestures with corresponding emojis.
-    \item \textbf{Readability}: Colors and progress bars improve understanding.
-    \item \textbf{Responsiveness}: Optimized detection parameters improve fluidity.
+    \item \textbf{AffectNet}: A larger dataset with RGB images (75×75) and 8 emotion classes. The higher resolution and color information provided richer features for training.
+    \item \textbf{FER+}: Microsoft's re-annotation of FER2013 with crowd-sourced labels from 10 annotators, reducing label noise and adding the ``Contempt'' class.
 \end{itemize}
+
+We adapted our training pipeline to support these datasets, implementing a unified data loading system (see Section~\ref{sec:datasets}for technical details).
+
+\subsection{Model Refinement Process}
+
+Throughout the project, we continuously refined our training approach. Key improvements included:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Architecture enhancements}: Addition of Squeeze-and-Excitation (SE) blocks for channel attention
+    \item \textbf{Augmentation strategies}: Implementation of Mixup and advanced geometric transformations
+    \item \textbf{Training optimizations}: OneCycleLR scheduling, mixed-precision training, and gradient accumulation
+    \item \textbf{Multi-dataset training}: Combined training on AffectNet and FER+ for improved generalization
+\end{enumerate}
+
+These refinements are documented in our training notebook and are detailed in Section~\ref{sec:training}.
+
+\subsection{Application Development}
+
+The real-time application underwent several major iterations:
+
+\subsubsection{Version 1--3: Core CNN Integration}
+Early versions focused on establishing the basic pipeline: webcam capture, face detection (Haar Cascades), CNN inference, and emoji display.
+
+\subsubsection{Version 4: MediaPipe Integration}
+A significant milestone was the integration of \textbf{MediaPipe} for two purposes:
+
+\begin{itemize}
+    \item \textbf{Hand gesture recognition}: We added hand detection and gesture classification to expand the range of expressible emojis. Combining our CNN's emotion detection with MediaPipe's hand tracking created a richer, more interactive experience.
+    \item \textbf{Facial landmark analysis}: MediaPipe Face Mesh provides detailed facial feature analysis (eye openness, smile intensity, etc.) that supplements CNN predictions for more nuanced emoji selection.
+\end{itemize}
+
+The combination of our trained CNN with MediaPipe's pre-trained models exemplifies how different recognition techniques can be fused for enhanced functionality.
+
+\subsubsection{Debugging and Visualization}
+To better understand model behavior and facilitate debugging, we implemented extensive visualization overlays:
+\begin{itemize}[noitemsep]
+    \item Real-time emotion probability bars
+    \item Facial feature intensity indicators
+    \item Hand landmark visualization
+    \item Inference time and FPS monitoring
+\end{itemize}
+
+\subsection{ONNX Optimization}
+
+The final evolution step was converting our PyTorch models to \textbf{ONNX} (Open Neural Network Exchange) format. This decision was motivated by:
+
+\begin{itemize}
+    \item \textbf{Performance}: ONNX Runtime provides optimized inference kernels, achieving 2.7$\times$ faster inference compared to native PyTorch on GPU.
+    \item \textbf{Portability}: ONNX models can be deployed across different platforms and frameworks without requiring PyTorch installation.
+    \item \textbf{Production readiness}: ONNX is an industry standard for deploying machine learning models, making our system more suitable for real-world applications.
+    \item \textbf{Reduced dependencies}: End users can run the application with just ONNX Runtime, which has a smaller footprint than the full PyTorch installation.
+\end{itemize}
+
+The export process preserves model accuracy while enabling seamless integration with our application (see Section~\ref{sec:onnx}).
+
+%==============================================================================
+\section{Technical Implementation}
+%==============================================================================
+
+This section provides detailed technical information about our implementation, covering model architecture, training methodology, dataset handling, and deployment optimization.
+
+\subsection{Model Architecture}
+\label{sec:architecture}
+
+We developed a CNN architecture with Squeeze-and-Excitation (SE) blocks for enhanced feature attention. The architecture is implemented in \texttt{model.py}.
+
+\subsubsection{Squeeze-and-Excitation Blocks}
+
+SE blocks implement a channel attention mechanism that adaptively recalibrates feature responses:
+
+\begin{equation}
+    \text{SE}(x) = x \cdot \sigma(W_2 \cdot \text{ReLU}(W_1 \cdot \text{GAP}(x)))
+\end{equation}
+
+where GAP denotes Global Average Pooling, $W_1$ and $W_2$ are learned weights, and $\sigma$ is the sigmoid function.
+
+This mechanism allows the network to emphasize informative features while suppressing less useful ones, which is particularly beneficial for emotion recognition where subtle facial cues carry significant information.
+
+\subsubsection{Network Architecture}
+
+Our final architecture (\texttt{FaceEmotionCNN\_SE}) consists of:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Block} & \textbf{Channels} & \textbf{SE Reduction} & \textbf{Output Size} \\
+\midrule
+Input & 1 (grayscale) & --- & $48{\times}48$ \\
+Block 1 & 32 & 8 & $24{\times}24$ \\
+Block 2 & 64 & 8 & $12{\times}12$ \\
+Block 3 & 128 & 16 & $6{\times}6$ \\
+Block 4 & 256 & 16 & $3{\times}3$ \\
+Global Pool & 256 & --- & $1{\times}1$ \\
+Classifier & $512 \to 8$ & --- & 8 classes \\
+\bottomrule
+\end{tabular}
+\caption{FaceEmotionCNN\_SE architecture for FER+/FER2013 (48×48 grayscale input)}
+\end{table}
+
+Each convolutional block contains:
+\begin{itemize}[noitemsep]
+    \item Two 3×3 convolutional layers with BatchNorm and ReLU
+    \item SE block for channel attention
+    \item 2×2 MaxPooling
+    \item Dropout (0.1) for regularization
+\end{itemize}
+
+\subsubsection{Model Variants}
+
+We implemented multiple model variants to support different input formats:
+
+\begin{itemize}
+    \item \textbf{FaceEmotionCNN\_SE}: Primary model with SE blocks (used in production)
+    \item \textbf{FaceEmotionCNN}: Standard CNN without SE blocks
+    \item \textbf{FaceEmotionCNNLegacy}: Lightweight model for backward compatibility
+\end{itemize}
+
+The \texttt{load\_model\_smart()} function automatically detects the model architecture from checkpoint files, enabling seamless switching between variants.
+
+\subsection{Training Methodology}
+\label{sec:training}
+
+Our training pipeline incorporates several advanced techniques, all configured through a centralized \texttt{Config} class in the training notebook.
+
+\subsubsection{Loss Functions}
+
+We experimented with multiple loss functions:
+
+\begin{itemize}
+    \item \textbf{Label Smoothing Cross-Entropy}: Prevents overconfident predictions by softening target labels:
+    \begin{equation}
+        y'_i = (1-\epsilon) \cdot y_i + \frac{\epsilon}{K}
+    \end{equation}
+    where $\epsilon$ is the smoothing factor and $K$ is the number of classes.
+    
+    \item \textbf{Focal Loss}: Addresses class imbalance by down-weighting easy examples:
+    \begin{equation}
+        \text{FL}(p_t) = -\alpha_t (1-p_t)^\gamma \log(p_t)
+    \end{equation}
+\end{itemize}
+
+\subsubsection{Data Augmentation}
+
+Using the Albumentations library, we applied:
+\begin{itemize}[noitemsep]
+    \item Horizontal flipping (p=0.5)
+    \item Affine transformations: translation (±5\%), scaling (0.95--1.05), rotation (±10°)
+    \item Gaussian noise and blur
+    \item Brightness/contrast adjustments
+    \item Coarse dropout for occlusion robustness
+\end{itemize}
+
+\subsubsection{Mixup Augmentation}
+
+Mixup creates virtual training examples by linearly interpolating between pairs of samples:
+\begin{equation}
+    \tilde{x} = \lambda x_i + (1-\lambda) x_j, \quad \tilde{y} = \lambda y_i + (1-\lambda) y_j
+\end{equation}
+where $\lambda \sim \text{Beta}(\alpha, \alpha)$.
+
+\subsubsection{Training Optimizations}
+
+\begin{itemize}
+    \item \textbf{Mixed Precision (AMP)}: Automatic mixed precision training for 2× speedup with minimal accuracy impact
+    \item \textbf{OneCycleLR Scheduler}: Learning rate warmup followed by cosine annealing
+    \item \textbf{torch.compile}: PyTorch 2.0 compilation for optimized execution graphs
+    \item \textbf{Gradient Accumulation}: Enables larger effective batch sizes
+\end{itemize}
+
+\subsubsection{Training Configuration}
+
+Key hyperparameters for our best model:
+\begin{itemize}[noitemsep]
+    \item Batch size: 1536
+    \item Learning rate: 0.0015 (with OneCycleLR, max 0.015)
+    \item Weight decay: $10^{-4}$
+    \item Epochs: 100 (with early stopping, patience=20)
+    \item Mixup alpha: 0.2
+    \item Label smoothing: 0.1
+\end{itemize}
+
+\subsection{Dataset Handling}
+\label{sec:datasets}
+
+Our implementation supports multiple datasets through a unified interface.
+
+\subsubsection{Supported Datasets}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcccl}
+\toprule
+\textbf{Dataset} & \textbf{Images} & \textbf{Size} & \textbf{Classes} & \textbf{Format} \\
+\midrule
+FER2013 & $\sim$35k & $48{\times}48$ & 7 & Grayscale \\
+FER+ & $\sim$35k & $48{\times}48$ & 8 & Grayscale \\
+AffectNet & $\sim$50k & $75{\times}75$ & 8 & RGB \\
+\bottomrule
+\end{tabular}
+\caption{Supported datasets and their characteristics}
+\end{table}
+
+\subsubsection{Unified Emotion Mapping}
+
+All datasets are mapped to a unified 8-class emotion scheme:
+
+\begin{enumerate}[start=0,noitemsep]
+    \item Anger
+    \item Disgust
+    \item Fear
+    \item Happy
+    \item Sad
+    \item Surprise
+    \item Neutral
+    \item Contempt
+\end{enumerate}
+
+\subsubsection{Multi-Dataset Training}
+
+The \texttt{CombinedEmotionDataset} class enables training on multiple datasets simultaneously:
+\begin{itemize}[noitemsep]
+    \item Automatic format conversion (grayscale to RGB, resizing)
+    \item Unified label mapping
+    \item Source tracking for analysis
+    \item Class-balanced sampling
+\end{itemize}
+
+Note: FER2013 and FER+ share the same images with different labels; they should not be combined to avoid duplication.
+
+\subsection{Real-Time Application}
+\label{sec:application}
+
+The application (\texttt{app\_v4.py}) implements a complete real-time emoji recognition pipeline.
+
+\subsubsection{Pipeline Overview}
+
+\begin{enumerate}
+    \item \textbf{Capture}: Webcam frame acquisition via OpenCV
+    \item \textbf{Face Detection}: Haar Cascade classifier for face localization
+    \item \textbf{Preprocessing}: CLAHE histogram equalization, resizing, normalization
+    \item \textbf{Emotion Recognition}: CNN inference with Test-Time Augmentation (TTA)
+    \item \textbf{Facial Analysis}: MediaPipe Face Mesh for detailed feature extraction
+    \item \textbf{Hand Detection}: MediaPipe Hands for gesture recognition
+    \item \textbf{Emoji Mapping}: Combined emotion + features + gesture → emoji selection
+    \item \textbf{Display}: Real-time rendering with visualization overlays
+\end{enumerate}
+
+\subsubsection{Emotion Classification}
+
+The \texttt{EmotionClassifier} class handles:
+\begin{itemize}[noitemsep]
+    \item Automatic model architecture detection
+    \item Dataset-specific preprocessing
+    \item Test-Time Augmentation (horizontal flip)
+    \item Temporal smoothing for stable predictions
+    \item Emotion-specific probability calibration
+\end{itemize}
+
+\subsubsection{Hand Gesture Recognition}
+
+Using MediaPipe Hands, we detect and classify 11 gestures:
+\begin{itemize}[noitemsep]
+    \item Thumbs up/down
+    \item Peace sign
+    \item OK gesture
+    \item Rock sign
+    \item Open hand (high five)
+    \item Fist
+    \item Point up
+    \item Pray gesture
+    \item Love you sign
+    \item Call me gesture
+\end{itemize}
+
+\subsubsection{Multi-Model Modes}
+
+The application supports three operational modes:
+\begin{enumerate}
+    \item \textbf{Single model}: Standard operation with one model
+    \item \textbf{Comparison mode}: Side-by-side comparison of multiple models
+    \item \textbf{Ensemble mode}: Fusion of predictions from multiple models using weighted averaging, voting, or simple averaging
+\end{enumerate}
+
+\subsection{ONNX Export and Optimization}
+\label{sec:onnx}
+
+The \texttt{export\_to\_onnx.py} script handles model conversion for optimized deployment.
+
+\subsubsection{Export Process}
+
+\begin{lstlisting}[language=Python]
+torch.onnx.export(
+    model,
+    dummy_input,
+    onnx_path,
+    opset_version=14,
+    do_constant_folding=True,
+    dynamic_axes={'input': {0: 'batch_size'},
+                  'output': {0: 'batch_size'}}
+)
+\end{lstlisting}
+
+Key export parameters:
+\begin{itemize}[noitemsep]
+    \item \textbf{opset\_version=14}: Good compatibility across ONNX Runtime versions
+    \item \textbf{do\_constant\_folding=True}: Pre-computes constant operations
+    \item \textbf{dynamic\_axes}: Enables variable batch size inference
+\end{itemize}
+
+\subsubsection{Runtime Integration}
+
+The application automatically detects and uses ONNX models when available:
+\begin{itemize}[noitemsep]
+    \item Checks for \texttt{.onnx} file alongside \texttt{.pth} file
+    \item Selects appropriate execution provider (CUDA or CPU)
+    \item Falls back to PyTorch if ONNX Runtime unavailable
+\end{itemize}
+
+\subsubsection{Performance Comparison}
+
+Benchmarks were conducted on an NVIDIA RTX 4050 GPU and Intel i7 CPU:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Runtime} & \textbf{Inference Time} & \textbf{FPS} & \textbf{Speedup} \\
+\midrule
+\multicolumn{4}{l}{\textit{GPU (NVIDIA RTX 4050)}} \\
+PyTorch & 18.3ms & 28 & 1.0$\times$ \\
+ONNX Runtime (CUDA) & 6.8ms & 54 & 2.7$\times$ \\
+\midrule
+\multicolumn{4}{l}{\textit{CPU (Intel i7)}} \\
+PyTorch & 45.2ms & 12 & 1.0$\times$ \\
+ONNX Runtime & 19.6ms & 28 & 2.3$\times$ \\
+\bottomrule
+\end{tabular}
+\caption{Inference time comparison (per frame)}
+\end{table}
+
+%==============================================================================
+\section{Results and Discussion}
+%==============================================================================
+
+This section presents the results from our final training run, analyzing the training dynamics and model performance.
+
+\subsection{Training Results}
+
+The comprehensive training dashboard from our final 100-epoch training run on the combined AffectNet + FER+ dataset.
+
+% TODO: Add training_dashboard.png to the report folder
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=\textwidth]{training_dashboard.png}
+% \caption{Training dashboard showing loss curves, accuracy, learning rate schedule, epoch timing, GPU memory usage, and final configuration summary.}
+% \label{fig:training_dashboard}
+% \end{figure}
+
+\subsubsection{Final Metrics}
+
+Our best model achieved the following results:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Best Validation Accuracy & \textbf{82.13\%} \\
+Best Epoch & 100 \\
+Training Accuracy (final) & $\sim$95\% \\
+Validation Loss (final) & $\sim$0.65 \\
+Training Loss (final) & $\sim$0.80 \\
+\bottomrule
+\end{tabular}
+\caption{Final training metrics}
+\end{table}
+
+\subsubsection{Loss Curve Analysis}
+
+The loss curves reveal an interesting phenomenon: the \textbf{validation loss is consistently lower than the training loss} throughout the entire training process. This counter-intuitive behavior is explained by our use of \textbf{Mixup augmentation} ($\alpha = 0.2$).
+
+Mixup creates synthetic training samples by linearly interpolating between pairs of images and their labels, making the training task inherently more difficult than predicting clean, unaugmented validation images. This regularization technique:
+\begin{itemize}[noitemsep]
+    \item Prevents the model from memorizing training samples
+    \item Encourages smoother decision boundaries
+    \item Improves generalization to unseen data
+\end{itemize}
+
+Both curves decrease steadily over the 100 epochs, indicating stable and consistent learning without signs of divergence.
+
+\subsubsection{Accuracy Analysis}
+
+The accuracy plot shows typical deep learning training dynamics:
+\begin{itemize}[noitemsep]
+    \item \textbf{Rapid initial improvement}: Accuracy increases sharply during the first 20 epochs as the model learns fundamental facial features.
+    \item \textbf{Gradual convergence}: Progress slows as the model refines its representations.
+    \item \textbf{Gap between train and validation}: The training accuracy reaches $\sim$95\% while validation plateaus at 82.13\%, indicating some degree of overfitting. However, this gap is expected and acceptable given the complexity of emotion recognition.
+\end{itemize}
+
+The validation accuracy of 82.13\% represents strong performance for facial emotion recognition, particularly considering the inherent ambiguity in human emotional expressions.
+
+\subsubsection{Learning Rate Schedule}
+
+The OneCycleLR scheduler follows a characteristic profile:
+\begin{enumerate}[noitemsep]
+    \item \textbf{Warmup phase} (epochs 0--30): Learning rate increases from 0.0015 to peak at 0.015
+    \item \textbf{Annealing phase} (epochs 30--100): Learning rate decreases following a cosine curve toward zero
+\end{enumerate}
+
+This ``super-convergence'' strategy enables faster training and often achieves better final accuracy than constant learning rate schedules.
+
+\subsubsection{Computational Performance}
+
+The time-per-epoch graph reveals an important characteristic of \texttt{torch.compile}:
+\begin{itemize}[noitemsep]
+    \item \textbf{First epoch}: $\sim$450 seconds due to JIT compilation and optimization of the computation graph
+    \item \textbf{Subsequent epochs}: Stable at $\sim$68.7 seconds average
+\end{itemize}
+
+The initial compilation overhead is a one-time cost that pays dividends across all subsequent epochs, reducing total training time significantly compared to eager execution.
+
+\subsubsection{Memory Utilization}
+
+GPU memory usage remained perfectly stable at \textbf{9.6 GB} throughout training, demonstrating:
+\begin{itemize}[noitemsep]
+    \item No memory leaks in our training pipeline
+    \item Efficient batch processing with our large batch size (1536)
+    \item Effective memory management through mixed precision training
+\end{itemize}
+
+\subsection{Training Configuration Summary}
+
+The final training configuration that produced our best results:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Batch Size & 1536 \\
+Epochs & 100 \\
+Mixed Precision (AMP) & Enabled \\
+\texttt{torch.compile} & Enabled \\
+Mixup & Enabled ($\alpha = 0.2$) \\
+CutMix & Disabled \\
+SE Blocks & Enabled \\
+Label Smoothing & 0.1 \\
+Optimizer & AdamW \\
+Scheduler & OneCycleLR \\
+\bottomrule
+\end{tabular}
+\caption{Final training configuration}
+\end{table}
+
+\subsection{Real-Time Performance}
+
+The final application achieves:
+\begin{itemize}[noitemsep]
+    \item 28 FPS with PyTorch backend (GPU)
+    \item 54 FPS with ONNX Runtime (GPU) --- 2.7$\times$ speedup
+    \item Stable emoji predictions via temporal smoothing
+    \item Responsive hand gesture detection
+\end{itemize}
+
+\subsection{Lessons Learned}
+
+\begin{enumerate}
+    \item \textbf{Architecture matters}: SE blocks provided meaningful improvements over vanilla CNNs for emotion recognition by enabling adaptive channel attention.
+    \item \textbf{Data quality over quantity}: FER+ labels significantly improved training stability compared to original FER2013 due to crowd-sourced annotation quality.
+    \item \textbf{Regularization is key}: Mixup augmentation proved essential for generalization, as evidenced by the lower validation loss compared to training loss.
+    \item \textbf{Modern PyTorch features}: \texttt{torch.compile} and mixed precision training dramatically reduced training time with no accuracy penalty.
+    \item \textbf{Multi-modal fusion}: Combining CNN predictions with facial landmarks creates more nuanced emoji mappings.
+    \item \textbf{Deployment considerations}: ONNX optimization is essential for real-time applications, providing 2.7$\times$ speedup on GPU.
+\end{enumerate}
 
 %==============================================================================
 \section{Conclusion}
 %==============================================================================
 
-This project has enabled the development of a complete and advanced real-time facial emotion recognition system. The main contributions are:
+This project successfully developed a real-time emoji recognition system that combines deep learning-based emotion recognition with hand gesture detection. Starting from a simple MLP proposal, we evolved through multiple iterations to create a sophisticated application featuring:
 
-\begin{enumerate}
-    \item \textbf{Optimized CNN Architecture} for RGB 75$\times$75 images, integrating Squeeze-and-Excitation (SE) attention blocks and Global Average Pooling.
-    
-    \item \textbf{Advanced Training Pipeline} including:
-    \begin{itemize}
-        \item Label Smoothing to improve generalization.
-        \item Mixup for regularization.
-        \item OneCycleLR Scheduler for fast convergence.
-        \item Hardware optimizations (Mixed Precision, torch.compile) allowing a batch size of 1536.
-    \end{itemize}
-    
-    \item \textbf{Final Real-Time Application (\texttt{app\_v3.py})} combining:
-    \begin{itemize}
-        \item Multimodal analysis (CNN + MediaPipe Face Mesh + Hands).
-        \item Test-Time Augmentation (TTA) and CLAHE preprocessing.
-        \item Exponential temporal smoothing.
-        \item Extended and interactive emoji mapping.
-    \end{itemize}
-    
-    \item \textbf{Unified Dataset} combining AffectNet and FER+ for increased robustness (8 balanced classes).
-\end{enumerate}
-
-\subsection{Perspectives}
-
-To go further, the following improvements could be considered:
-
-\begin{itemize}
-    \item Use of transfer learning (VGGFace, ResNet pre-trained on faces).
-    \item Architecture with attention mechanism (Transformer, CBAM).
-    \item Multi-task detection (emotion + age + gender).
-    \item Valence and arousal analysis (dimensional model).
-    \item Deployment on edge devices (INT8 quantization, pruning).
-    \item Integration of an audio model for multimodal analysis.
+\begin{itemize}[noitemsep]
+    \item A CNN architecture with attention mechanisms trained on multiple datasets
+    \item Integration with MediaPipe for comprehensive gesture and facial analysis
+    \item ONNX optimization for deployment-ready performance
+    \item An intuitive real-time interface with extensive visualization capabilities
 \end{itemize}
 
-%==============================================================================
-\appendix
-\section{Project Structure}
-%==============================================================================
+The project demonstrates the importance of iterative development, the value of combining different recognition techniques, and the practical considerations required for deploying deep learning models in real-time applications.
 
-\begin{verbatim}
-Final_project/
-|-- app.py                   # Real-time application (initial version)
-|-- app_v3.py                # Optimized version (TTA, CLAHE, MediaPipe)
-|-- model.py                 # CNN Architecture (RGB 75x75)
-|-- training.ipynb           # Complete training notebook (Multi-source)
-|-- emotion_model.pth        # Trained model weights
-|-- emotion_model_best.pth   # Best model (early stopping)
-|-- data/
-|   +-- affectnet/           # Balanced AffectNet Dataset
-|   +-- fer2013/             # FER2013 Dataset
-|-- report/
-|   +-- report.tex           # This report
-+-- README.md
-\end{verbatim}
+\subsection{Future Work}
 
-%==============================================================================
-\begin{thebibliography}{9}
-%==============================================================================
-
-\bibitem{goodfellow2013}
-Goodfellow, I. J., et al. (2013). "Challenges in representation learning: A report on three machine learning contests." \textit{ICML Workshop}.
-
-\bibitem{barsoum2016}
-Barsoum, E., et al. (2016). "Training Deep Networks for Facial Expression Recognition with Crowd-Sourced Label Distribution." \textit{ACM ICMI}.
-
-\bibitem{mollahosseini2017}
-Mollahosseini, A., et al. (2017). "AffectNet: A Database for Facial Expression, Valence, and Arousal Computing in the Wild." \textit{IEEE Trans. Affective Computing}.
-
-\bibitem{li2017}
-Li, S., et al. (2017). "Reliable Crowdsourcing and Deep Locality-Preserving Learning for Expression Recognition in the Wild." \textit{CVPR}.
-
-\bibitem{he2015}
-He, K., et al. (2015). "Delving Deep into Rectifiers: Surpassing Human-Level Performance on ImageNet Classification." \textit{ICCV}.
-
-\bibitem{zhang2018mixup}
-Zhang, H., et al. (2018). "mixup: Beyond Empirical Risk Minimization." \textit{ICLR}.
-
-\bibitem{lugaresi2019}
-Lugaresi, C., et al. (2019). "MediaPipe: A Framework for Building Perception Pipelines." \textit{arXiv preprint arXiv:1906.08172}.
-
-\bibitem{buslaev2020}
-Buslaev, A., et al. (2020). "Albumentations: Fast and Flexible Image Augmentations." \textit{Information}, 11(2), 125.
-
-\bibitem{hu2018}
-Hu, J., et al. (2018). "Squeeze-and-Excitation Networks." \textit{CVPR}.
-
-\end{thebibliography}
-
+Potential extensions include:
+\begin{itemize}[noitemsep]
+    \item Transformer-based architectures for improved accuracy
+    \item Mobile deployment using TensorFlow Lite or CoreML
+    \item Additional gesture vocabularies
+    \item Multi-face tracking and recognition
+    \item Integration with video conferencing platforms
+\end{itemize}
 \end{document}
